@@ -1,0 +1,4 @@
+.vs
+src/JaffaCore/obj/
+src/JaffaCore/bin/
+*.user
