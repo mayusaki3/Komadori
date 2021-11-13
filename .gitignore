@@ -1,4 +1,4 @@
 .vs
-src/JaffaCore/obj/
-src/JaffaCore/bin/
+bin
+obj
 *.user

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="shift_jis"?>
+<config fmt="1.0">
+  <category name="General">
+    <value name="DataFolder" description="データのルートフォルダの場所を設定します。">
+      |..\..\DATA\
+    </value>
+    <value name="ScreenNo" description="会場モニター画面のスクリーン番号を0-nで指定します。">
+      |1
+    </value>
+    <value name="GameBook" description="コンソールで使用する大会ブックを指定します。">
+      |TIROL_V12_BOOK.xlsm
+    </value>
+  </category>
+  <category name="NicoNama">
+    <value name="URL" description="ニコニコ生放送の放送URLを設定します。">
+      |http://live.nicovideo.jp/watch/lv292427773
+    </value>
+    <value name="NicoPosMon" description="会場モニター上のニコニコ生放送表示位置・サイズを「Top,Left,Zoom」で設定します。">
+      |223,7,125,49,49
+    </value>
+  </category>
+  <category name="NicoMsg">
+    <value name="Top" description="ニコ生画面上部に表示したメッセージを記録します。">
+      |チロルチョコロボット大会１２
+      |しばらくお待ちください
+      |まもなく再開です
+      |次回は、2018年3月ぐらいに
+      |
+    </value>
+    <value name="Bottom" description="ニコ生画面下部に表示したメッセージを記録します。">
+      |Twitter ハッシュタグ #tirolrobo でつぶやいてね
+      |
+    </value>
+  </category>
+</config>
