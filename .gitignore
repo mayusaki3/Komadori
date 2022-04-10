@@ -2,3 +2,8 @@
 bin
 obj
 *.user
+KomadoriForWindows
+KomadoriHelper
+KomadoriHelperTest
+Runtime
+SOUND
