@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="shift_jis"?>
+<config fmt="1.0">
+  <category name="General">
+    <value name="DataFolder" description="データのルートフォルダの場所を設定します。">
+      |..\DATA\
+    </value>
+    <value name="ScreenNo" description="会場モニター画面のスクリーン番号を0-nで指定します。">
+      |1
+    </value>
+    <value name="GameBook" description="コンソールで使用する大会ブックを指定します。">
+      |TIROL_V16_BOOK.xlsm
+    </value>
+  </category>
+  <category name="Live">
+    <value name="URL" description="ライブ配信URLを設定します。">
+      |https://www.youtube.com/watch?v=mtEvQQZNc1k
+    </value>
+    <value name="LivePosMon" description="会場モニター上のライブ配信表示位置・サイズを「Top,Left,Zoom」で設定します。">
+      |0,0,100
+    </value>
+  </category>
+  <category name="NicoMsg">
+    <value name="Top" description="ラライブ配信画面上部に表示したメッセージを記録します。">
+      |
+    </value>
+    <value name="Bottom" description="ライブ配信画面下部に表示したメッセージを記録します。">
+      |
+    </value>
+  </category>
+  <category name="Utility">
+    <value name="LuppetExe" description="起動するLuppetを指定します。">
+      |
+    </value>
+  </category>
+</config>
