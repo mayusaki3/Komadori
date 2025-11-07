@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>OBS Control Panel</title>
+<style>
+body { font-family:sans-serif; background:#222; color:#fff; text-align:center; }
+button { margin:8px; padding:12px 24px; font-size:1rem; border:0; border-radius:8px; cursor:pointer; }
+.scene  { background:#4a90e2; }
+.record { background:#d0021b; }
+.stream { background:#7ed321; }
+</style>
+</head>
+<body>
+<h2>OBS Control Panel</h2>
+<button class="scene"  onclick="changeScene('Scene')">Scene</button>
+<button class="record" onclick="toggleRecord()">Rec</button>
+<button class="stream" onclick="toggleStream()">Stream</button>
+
+<script>
+let ws;
+function connect() {
+  ws = new WebSocket("ws://127.0.0.1:4455");
+  ws.onopen = () => console.log("Connected to OBS");
+  ws.onclose = () => setTimeout(connect, 2000);
+}
+connect();
+
+function send(req) {
+  req["d"] ||= {};
+  req["d"]["requestId"] = crypto.randomUUID();
+  req["op"] = 6; // Request
+  ws.send(JSON.stringify(req));
+}
+
+function changeScene(name) {
+  send({ d:{ requestType:"SetCurrentProgramScene", requestData:{ sceneName:name } }});
+}
+function toggleRecord() {
+  send({ d:{ requestType:"ToggleRecord" }});
+}
+function toggleStream() {
+  send({ d:{ requestType:"ToggleStream" }});
+}
+</script>
+</body>
+</html>
