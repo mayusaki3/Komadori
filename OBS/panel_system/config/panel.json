@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "pages": {
+    "main": {
+      "name": "Main",
+      "buttons": [
+        { "x": 0, "y": 0, "label": "LIVE", "action": { "type": "obs.toggleStream" } },
+        { "x": 1, "y": 0, "label": "REC",  "action": { "type": "obs.toggleRecord" } },
+        { "x": 2, "y": 0, "label": "CAM",  "action": { "type": "obs.setScene", "scene": "CameraOnly" } },
+        { "x": 0, "y": 2, "label": "UTIL", "action": { "type": "page.switch", "page": "util" } }
+      ]
+    },
+    "util": {
+      "name": "Util",
+      "buttons": [
+        { "x": 0, "y": 0, "label": "MAIN", "action": { "type": "page.switch", "page": "main" } }
+      ]
+    }
+  }
+}
