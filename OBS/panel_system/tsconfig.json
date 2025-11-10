@@ -3,10 +3,10 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "Node",
+    "types": ["vitest"],
     "esModuleInterop": true,
     "strict": true,
     "resolveJsonModule": true,
-    "types": ["vitest"],
     "rootDir": "./",
     "outDir": "./dist"
   },

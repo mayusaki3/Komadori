@@ -7,3 +7,15 @@ KomadoriHelper
 KomadoriHelperTest
 Runtime
 ~*.*
+
+# Node / pnpm (OBS/panel_system)
+node_modules/
+.pnpm-store/
+.pnpm-debug.log
+
+# Build / Coverage
+dist/
+coverage/
+
+# Vitest
+.vitest/

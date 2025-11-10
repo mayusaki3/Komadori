@@ -1,11 +1,9 @@
 import { afterEach, vi } from "vitest";
 
 /**
- * 共通テスト初期化:
- * - モックのクリア
- * - 必要に応じて環境変数などをセット
+ * 共通テスト初期化処理。
+ * - 各テストケース後にモック状態をリセットする。
  */
-
 afterEach(() => {
   vi.clearAllMocks();
   vi.restoreAllMocks();
