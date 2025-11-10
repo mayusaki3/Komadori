@@ -40,6 +40,7 @@ panel_system の JSON 駆動制御が、仕様通りに動作することを自�
 
 ## 4. 実装配置（推奨）
 
+- [パネルシステム テスト環境構築手順](10_test_env_setup.md)
 - 実コードのテストは `/OBS/panel_system/tests/` に配置。
 - 本ディレクトリ（docs/ja-JP/obs/tests/panel_system/）はテスト仕様書のみを管理する。
 

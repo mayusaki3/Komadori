@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Node",
+    "esModuleInterop": true,
+    "strict": true,
+    "resolveJsonModule": true,
+    "types": ["vitest"],
+    "rootDir": "./",
+    "outDir": "./dist"
+  },
+  "include": ["src", "tests"]
+}
