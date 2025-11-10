@@ -29,8 +29,7 @@
 
 ### 2.2 テスト関連
 
-- `tests/panel_system/`:
-  - パネルシステムの単体テスト・結合テスト方針とケース定義
+- [パネルシステム テスト方針](tests/panel_system/00_test_policy.md)
 
 ## 3. 更新ルール
 

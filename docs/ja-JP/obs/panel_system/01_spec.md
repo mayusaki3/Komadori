@@ -61,7 +61,79 @@
   - OBS の配信/録画状態を取得し、該当ボタンのスタイル変更（ON/OFF表示）。
   - 外部API結果に応じた色分け。
 
-## 3. 非機能要件
+## 3. 通信プロトコル（Control Core ↔ クライアント）
+
+本システム内のやり取りは、JSON メッセージに統一する。輸送層は WebSocket または HTTP を使用する。
+
+### 3.1 共通フィールド
+
+- `type`: メッセージ種別文字列
+- `requestId`: 任意。応答が必要な場合に使用。
+- `payload`: メッセージ固有のデータ
+
+### 3.2 クライアント → Control Core
+
+1. ボタン押下通知
+
+    ```json
+    {
+      "type": "button.click",
+      "payload": {
+        "page": "main",
+        "x": 0,
+        "y": 1,
+        "source": "dock"       // "dock" or "streamdeck"
+      }
+    }
+    ```
+    Control Core は panel.json に従いアクションを解決し、OBS/HTTP 等を実行する。
+
+### 3.3 Control Core → クライアント
+
+1. ページ定義・更新
+
+    ```json
+    {
+      "type": "page.update",
+      "payload": {
+        "currentPage": "main",
+        "buttons": [
+          { "x":0, "y":0, "label":"LIVE", "state":"on" },
+          { "x":1, "y":0, "label":"REC",  "state":"off" }
+        ]
+      }
+    }
+    ```
+    - Dock UI はこれを元にボタン表示を再描画。
+    - Stream Deck プラグインは対応キーのタイトル・アイコンを更新。
+
+2. 状態更新通知（例）
+
+    ```json
+    {
+      "type": "status.update",
+      "payload": {
+        "streaming": true,
+        "recording": false
+      }
+    }
+    ```
+    クライアント側は該当ボタンのスタイル等を更新する。
+
+## 3.4 エラー応答
+```json
+{
+  "type": "error",
+  "requestId": "xxxxx",
+  "payload": {
+    "code": "INVALID_ACTION",
+    "message": "Unknown action type: obs.unknown"
+  }
+}
+```
+Control Core は panel.json の不備や実行不能アクションを明示する。
+
+## 4. 非機能要件
 
 - ローカル限定通信（127.0.0.1）を基本とする。
 - 設定ファイル不正時は安全側（何もしない）で動作。
