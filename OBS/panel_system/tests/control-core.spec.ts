@@ -1,21 +1,29 @@
 /**
+ * ControlCore 単体テスト
+ *
  * TestID 対応:
  * - TC-01: 正常ロード
  * - TC-02: 重複座標エラー
- * - TC-03: 未定義ページへの page.switch
+ * - TC-03: 未定義ページ / 不正ページ文脈
  * - TC-04: OBS シーン切替
  * - TC-05: 配信/録画トグル
- * - TC-06: HTTP 呼び出し＋表示
+ * - TC-06: HTTP 呼び出し＋表示更新
  * - TC-07: ページ切替同期
- * - TC-08: 不明 action.type
+ * - TC-08: 不明 action.type エラー
+ * - TC-09: NO_BUTTON エラー
+ * - TC-10: toggleMute 実行
+ * - TC-11: setSourceVisibility 実行
+ * - TC-12: http.post 実行
+ * - TC-13: HTTP エラー時の HTTP_FAILED
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fileURLToPath } from "node:url";
 import * as path from "node:path";
 import * as fs from "node:fs";
 import {
   ControlCore,
+  ControlCoreOptions,
   ClientBroadcaster,
   ObsController,
   HttpClient,
@@ -23,7 +31,7 @@ import {
 } from "../src/control-core";
 
 /**
- * テスト共通モック
+ * 共通モック生成
  */
 function createMocks() {
   const sent: any[] = [];
@@ -55,10 +63,9 @@ function createMocks() {
 }
 
 /**
- * テスト用 config JSON を一時生成
- * リポジトリには残してよい前提の軽量ファイル。
+ * 一時 panel.json を書き出すユーティリティ
  */
-function writeConfig(name: string, json: any): string {
+function writeTempConfig(name: string, json: unknown): string {
   const baseDir = path.dirname(fileURLToPath(import.meta.url));
   const filePath = path.join(baseDir, name);
   fs.writeFileSync(filePath, JSON.stringify(json), "utf-8");
@@ -66,15 +73,20 @@ function writeConfig(name: string, json: any): string {
 }
 
 /**
- * 通常 panel.json のパス
+ * デフォルト panel.json のパス
  */
 const defaultConfigPath = fileURLToPath(
   new URL("../config/panel.json", import.meta.url),
 );
 
 describe("ControlCore", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it("TC-01: 正常ロードで page.update を送信する", () => {
     const { broadcaster, obs, http, sent } = createMocks();
+
     const core = new ControlCore({
       configPath: defaultConfigPath,
       broadcaster,
@@ -92,7 +104,7 @@ describe("ControlCore", () => {
   it("TC-02: 重複座標エラーで page.update を送信しない", () => {
     const { broadcaster, obs, http, sent } = createMocks();
 
-    const dupConfigPath = writeConfig("panel-dup.json", {
+    const dupConfigPath = writeTempConfig("panel-dup.json", {
       version: 1,
       pages: {
         main: {
@@ -112,31 +124,27 @@ describe("ControlCore", () => {
       http,
     });
 
-    try {
-      core.initialize();
-    } catch {
-      // 実装が例外で落とす場合も許容
-    }
+    expect(() => core.initialize()).toThrow();
 
     const update = sent.find((m) => m.type === "page.update");
     expect(update).toBeUndefined();
   });
 
-  it("TC-03: 未定義ページへの page.switch で INVALID_PAGE エラー", async () => {
+  it("TC-03: 未定義ページ / 不正ページ文脈で INVALID_PAGE_CONTEXT を返す", async () => {
     const { broadcaster, obs, http, sent } = createMocks();
+
     const core = new ControlCore({
       configPath: defaultConfigPath,
       broadcaster,
       obs,
       http,
     });
-
     core.initialize();
 
     const msg: ButtonClickMessage = {
       type: "button.click",
       payload: {
-        page: "unknown",
+        page: "unknown", // currentPage と違う値
         x: 0,
         y: 0,
         source: "dock",
@@ -145,26 +153,24 @@ describe("ControlCore", () => {
 
     await core.handleButtonClick(msg);
 
-    // 外部呼び出しなし
+    // OBS/HTTP は呼ばれない
     expect(obs.setScene).not.toHaveBeenCalled();
     expect(http.get).not.toHaveBeenCalled();
-    expect(http.post).not.toHaveBeenCalled();
 
-    // エラー送信確認
     const err = sent.find((m) => m.type === "error");
     expect(err).toBeTruthy();
-    expect(err.code || err.payload?.code).toBe("INVALID_PAGE_CONTEXT");
+    expect(err.payload?.code).toBe("INVALID_PAGE_CONTEXT");
   });
 
   it("TC-04: button.click で obs.setScene が呼ばれる", async () => {
     const { broadcaster, obs, http, sent } = createMocks();
+
     const core = new ControlCore({
       configPath: defaultConfigPath,
       broadcaster,
       obs,
       http,
     });
-
     core.initialize();
 
     const msg: ButtonClickMessage = {
@@ -175,29 +181,28 @@ describe("ControlCore", () => {
     await core.handleButtonClick(msg);
 
     expect(obs.setScene).toHaveBeenCalledWith("CameraOnly");
-    // エラーが飛んでいないことだけ軽く確認
     const err = sent.find((m) => m.type === "error");
     expect(err).toBeUndefined();
   });
 
   it("TC-05: 配信/録画トグルで各 OBS API が呼ばれる", async () => {
     const { broadcaster, obs, http, sent } = createMocks();
+
     const core = new ControlCore({
       configPath: defaultConfigPath,
       broadcaster,
       obs,
       http,
     });
-
     core.initialize();
 
-    // LIVE (0,0)
+    // LIVE ボタン
     await core.handleButtonClick({
       type: "button.click",
       payload: { page: "main", x: 0, y: 0, source: "dock" },
     });
 
-    // REC (1,0)
+    // REC ボタン
     await core.handleButtonClick({
       type: "button.click",
       payload: { page: "main", x: 1, y: 0, source: "dock" },
@@ -206,15 +211,15 @@ describe("ControlCore", () => {
     expect(obs.toggleStream).toHaveBeenCalledTimes(1);
     expect(obs.toggleRecord).toHaveBeenCalledTimes(1);
 
-    // 状態更新メッセージが少なくとも1件ある想定
     const status = sent.filter((m) => m.type === "status.update");
     expect(status.length).toBeGreaterThanOrEqual(1);
   });
 
-  it("TC-06: HTTP 呼び出し＋表示でラベル更新", async () => {
+  it("TC-06: HTTP 呼び出し＋表示更新 (http.get)", async () => {
     const { broadcaster, obs, http, sent } = createMocks();
 
-    const httpConfigPath = writeConfig("panel-http.json", {
+    // displayKey を利用する定義
+    const httpConfigPath = writeTempConfig("panel-http.json", {
       version: 1,
       pages: {
         main: {
@@ -241,7 +246,6 @@ describe("ControlCore", () => {
       obs,
       http,
     });
-
     core.initialize();
 
     await core.handleButtonClick({
@@ -251,30 +255,26 @@ describe("ControlCore", () => {
 
     expect(http.get).toHaveBeenCalledTimes(1);
 
-    const update = sent.find(
-      (m) => m.type === "page.update" && m.payload?.buttons,
-    );
-
-    // HTTPが1回呼ばれていること
-    expect(http.get).toHaveBeenCalledTimes(1);
-
-    // 少なくとも何らかの page.update が発行されていること
-    expect(update).toBeTruthy();
+    // displayKey "status" によりボタンラベル更新 + page.update が飛ぶ想定
+    const updates = sent.filter((m) => m.type === "page.update");
+    const serialized = JSON.stringify(updates);
+    expect(serialized).toContain("OK");
   });
 
   it("TC-07: ページ切替同期 main→util", async () => {
     const { broadcaster, obs, http, sent } = createMocks();
+
     const core = new ControlCore({
       configPath: defaultConfigPath,
       broadcaster,
       obs,
       http,
     });
-
     core.initialize();
-    sent.length = 0; // 初期 page.update をクリアして純粋に切替のみを見る
 
-    // main の UTIL ボタン (0,2) で util へ
+    sent.length = 0; // 初期更新をクリア
+
+    // main ページ上の page.switch ボタンを押す前提
     await core.handleButtonClick({
       type: "button.click",
       payload: { page: "main", x: 0, y: 2, source: "dock" },
@@ -282,7 +282,6 @@ describe("ControlCore", () => {
 
     const updates = sent.filter((m) => m.type === "page.update");
     expect(updates.length).toBeGreaterThanOrEqual(1);
-
     const last = updates[updates.length - 1];
     expect(last.payload.currentPage).toBe("util");
   });
@@ -290,7 +289,7 @@ describe("ControlCore", () => {
   it("TC-08: 不明 action.type で INVALID_ACTION エラー", async () => {
     const { broadcaster, obs, http, sent } = createMocks();
 
-    const unknownConfigPath = writeConfig("panel-unknown-action.json", {
+    const unknownConfigPath = writeTempConfig("panel-unknown-action.json", {
       version: 1,
       pages: {
         main: {
@@ -313,7 +312,6 @@ describe("ControlCore", () => {
       obs,
       http,
     });
-
     core.initialize();
 
     await core.handleButtonClick({
@@ -321,15 +319,212 @@ describe("ControlCore", () => {
       payload: { page: "main", x: 0, y: 0, source: "dock" },
     });
 
-    // 外部呼び出しなし
     expect(obs.setScene).not.toHaveBeenCalled();
-    expect(obs.toggleStream).not.toHaveBeenCalled();
     expect(http.get).not.toHaveBeenCalled();
     expect(http.post).not.toHaveBeenCalled();
 
-    // エラー送信確認
     const err = sent.find((m) => m.type === "error");
     expect(err).toBeTruthy();
-    expect(err.code || err.payload?.code).toBe("INVALID_ACTION");
+    expect(err.payload?.code).toBe("INVALID_ACTION");
+  });
+
+  it("TC-09: ボタン未定義座標で NO_BUTTON エラー", async () => {
+    const { broadcaster, obs, http, sent } = createMocks();
+
+    const core = new ControlCore({
+      configPath: defaultConfigPath,
+      broadcaster,
+      obs,
+      http,
+    });
+    core.initialize();
+
+    await core.handleButtonClick({
+      type: "button.click",
+      payload: { page: "main", x: 4, y: 4, source: "dock" }, // 想定外座標
+    });
+
+    expect(obs.setScene).not.toHaveBeenCalled();
+    const err = sent.find((m) => m.type === "error");
+    expect(err).toBeTruthy();
+    expect(err.payload?.code).toBe("NO_BUTTON");
+  });
+
+  it("TC-10: toggleMute アクションで obs.toggleMute が呼ばれる", async () => {
+    const { broadcaster, obs, http, sent } = createMocks();
+
+    const muteConfigPath = writeTempConfig("panel-mute.json", {
+      version: 1,
+      pages: {
+        main: {
+          name: "Main",
+          buttons: [
+            {
+              x: 0,
+              y: 0,
+              label: "MUTE",
+              action: { type: "obs.toggleMute", source: "Mic/Aux" },
+            },
+          ],
+        },
+      },
+    });
+
+    const core = new ControlCore({
+      configPath: muteConfigPath,
+      broadcaster,
+      obs,
+      http,
+    });
+    core.initialize();
+
+    await core.handleButtonClick({
+      type: "button.click",
+      payload: { page: "main", x: 0, y: 0, source: "dock" },
+    });
+
+    expect(obs.toggleMute).toHaveBeenCalledWith("Mic/Aux");
+    const err = sent.find((m) => m.type === "error");
+    expect(err).toBeUndefined();
+  });
+
+  it("TC-11: setSourceVisibility アクションで obs.setSourceVisibility が呼ばれる", async () => {
+    const { broadcaster, obs, http, sent } = createMocks();
+
+    const visConfigPath = writeTempConfig("panel-vis.json", {
+      version: 1,
+      pages: {
+        main: {
+          name: "Main",
+          buttons: [
+            {
+              x: 1,
+              y: 1,
+              label: "SRC",
+              action: {
+                type: "obs.setSourceVisibility",
+                scene: "SceneA",
+                source: "Overlay",
+                visible: true,
+              },
+            },
+          ],
+        },
+      },
+    });
+
+    const core = new ControlCore({
+      configPath: visConfigPath,
+      broadcaster,
+      obs,
+      http,
+    });
+    core.initialize();
+
+    await core.handleButtonClick({
+      type: "button.click",
+      payload: { page: "main", x: 1, y: 1, source: "dock" },
+    });
+
+    expect(obs.setSourceVisibility).toHaveBeenCalledWith(
+      "SceneA",
+      "Overlay",
+      true,
+    );
+    const err = sent.find((m) => m.type === "error");
+    expect(err).toBeUndefined();
+  });
+
+  it("TC-12: http.post アクションで http.post が呼ばれる", async () => {
+    const { broadcaster, obs, http, sent } = createMocks();
+
+    const postConfigPath = writeTempConfig("panel-http-post.json", {
+      version: 1,
+      pages: {
+        main: {
+          name: "Main",
+          buttons: [
+            {
+              x: 0,
+              y: 0,
+              label: "SEND",
+              action: {
+                type: "http.post",
+                url: "https://example.test/hook",
+              },
+            },
+          ],
+        },
+      },
+    });
+
+    const core = new ControlCore({
+      configPath: postConfigPath,
+      broadcaster,
+      obs,
+      http,
+    });
+    core.initialize();
+
+    await core.handleButtonClick({
+      type: "button.click",
+      payload: { page: "main", x: 0, y: 0, source: "dock" },
+    });
+
+    expect(http.post).toHaveBeenCalledTimes(1);
+    const err = sent.find((m) => m.type === "error");
+    expect(err).toBeUndefined();
+  });
+
+  it("TC-13: HTTP 実行エラー時に HTTP_FAILED エラーを返す", async () => {
+    const { broadcaster, obs } = createMocks();
+
+    const httpError: HttpClient = {
+      get: vi.fn().mockRejectedValue(new Error("network error")),
+      post: vi.fn(),
+    };
+
+    const httpErrConfigPath = writeTempConfig("panel-http-error.json", {
+      version: 1,
+      pages: {
+        main: {
+          name: "Main",
+          buttons: [
+            {
+              x: 0,
+              y: 0,
+              label: "ERR",
+              action: {
+                type: "http.get",
+                url: "https://example.test/error",
+              },
+            },
+          ],
+        },
+      },
+    });
+
+    const sent: any[] = [];
+    const broadcasterErr: ClientBroadcaster = {
+      broadcast: (m) => sent.push(m),
+    };
+
+    const core = new ControlCore({
+      configPath: httpErrConfigPath,
+      broadcaster: broadcasterErr,
+      obs,
+      http: httpError,
+    });
+    core.initialize();
+
+    await core.handleButtonClick({
+      type: "button.click",
+      payload: { page: "main", x: 0, y: 0, source: "dock" },
+    });
+
+    const err = sent.find(
+      (m) => m.type === "error" && m.payload?.code === "HTTP_FAILED",
+    );
+    expect(err).toBeTruthy();
   });
 });

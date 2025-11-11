@@ -37,15 +37,16 @@ panel.json に基づく制御ロジックと、メッセージ入出力の正当
   - 起動エラー扱い（ログ出力）
   - 外部への `page.update` を送信しない
 
-### TC-03: 未定義ページへの page.switch
+### TC-03: 未定義ページ / 不正ページ文脈
 
 - 条件:
-  - `page.switch` で存在しないページ名を指定
+  - `currentPage = "main"` の状態で、`page = "unknown"` など現在ページと異なる `page` の `button.click` を受信
 - 手順:
-  - `button.click` を送信
+  - Control Core を通常起動
+  - 上記条件の `button.click` メッセージを入力
 - 確認:
-  - OBS/HTTP 呼び出しは行わない
-  - `error` メッセージを返す（code=`INVALID_PAGE`）
+  - OBS / HTTP の呼び出しを行わない
+  - `error` メッセージ（code=`INVALID_PAGE_CONTEXT`）を送信する
 
 ### TC-04: OBS シーン切替アクション
 
@@ -67,16 +68,16 @@ panel.json に基づく制御ロジックと、メッセージ入出力の正当
   - 対応する OBS API 呼び出しが行われる
   - 結果に応じて `status.update` が送信される（モック応答で検証）
 
-### TC-06: HTTP 呼び出し＋表示
+### TC-06: HTTP 呼び出し＋表示更新 (http.get)
 
 - 条件:
-  - `http.get` アクション + `display: "status"` 定義
+  - `action.type = "http.get"`, `url` と `display`（表示用キー）が定義されたボタンが存在する panel.json
 - 手順:
-  - 対象ボタン `button.click`
-  - モック HTTP クライアントが `{ "status": "OK" }` を返す
+  - Control Core を起動
+  - 対象ボタンに対する `button.click` を送信
 - 確認:
-  - HTTP GET が1回呼び出される
-  - `page.update` などで該当ボタンラベルが `"OK"` に更新される
+  - `http.get` が1回呼び出される
+  - 応答内容を反映した `page.update` を送信する（display対象の値がボタン情報に反映されていること）
 
 ### TC-07: ページ切替同期
 
@@ -97,6 +98,61 @@ panel.json に基づく制御ロジックと、メッセージ入出力の正当
 - 確認:
   - 外部呼び出しを行わない
   - `error` を返す（code=`INVALID_ACTION`）
+
+### TC-09: ボタン未定義座標
+
+- 条件:
+  - 対象ページ上に定義されていない (x,y) に対する `button.click`
+- 手順:
+  - Control Core を起動
+  - 未定義座標の `button.click` を送信
+- 確認:
+  - OBS / HTTP の呼び出しを行わない
+  - `error` メッセージ（code=`NO_BUTTON`）を送信する
+
+### TC-10: obs.toggleMute アクション
+
+- 条件:
+  - `action.type = "obs.toggleMute"`, `source` が定義されたボタンが存在する panel.json
+- 手順:
+  - Control Core を起動
+  - 対象ボタンに対する `button.click` を送信
+- 確認:
+  - `obs.toggleMute(source)` が1回呼び出される
+  - `error` メッセージを送信しない
+
+### TC-11: obs.setSourceVisibility アクション
+
+- 条件:
+  - `action.type = "obs.setSourceVisibility"`, `scene`, `source`, `visible` が定義されたボタンが存在する panel.json
+- 手順:
+  - Control Core を起動
+  - 対象ボタンに対する `button.click` を送信
+- 確認:
+  - `obs.setSourceVisibility(scene, source, visible)` が1回呼び出される
+  - `error` メッセージを送信しない
+
+### TC-12: http.post アクション
+
+- 条件:
+  - `action.type = "http.post"`, `url` が定義されたボタンが存在する panel.json
+- 手順:
+  - Control Core を起動
+  - 対象ボタンに対する `button.click` を送信
+- 確認:
+  - `http.post(url, body)` が1回呼び出される（body 内容は実装定義）
+  - `error` メッセージを送信しない
+
+### TC-13: HTTP エラー時のハンドリング
+
+- 条件:
+  - `http.get` または `http.post` が例外/エラーを返す状況
+- 手順:
+  - エラーを返す HTTP クライアントを用意した状態で Control Core を起動
+  - 対象ボタンに対する `button.click` を送信
+- 確認:
+  - `error` メッセージ（code=`HTTP_FAILED`）を送信する
+  - 例外を呼び出し元へスローしない（プロセスが落ちない）
 
 ## 4. 実装上の注意
 

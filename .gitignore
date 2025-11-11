@@ -20,5 +20,8 @@ OBS/panel_system/coverage/
 OBS/panel_system/.vitest/
 OBS/panel_system/node_modules/
 
-# Vitest
+# vitest 一時ファイル
+tests/*.json
+tests/**/*.json
+coverage/
 .vitest/
