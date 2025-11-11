@@ -13,8 +13,10 @@
     "ws": "^8.18.0"
   },
   "devDependencies": {
-    "@vitest/coverage-v8": "^2.1.9",
-    "typescript": "^5.6.0",
-    "vitest": "^2.1.9"
+    "@types/node": "^22.10.0",
+    "@types/ws": "^8.5.12",
+    "@vitest/coverage-v8": "2.1.9",
+    "typescript": "5.9.3",
+    "vitest": "2.1.9"
   }
 }

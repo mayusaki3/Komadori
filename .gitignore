@@ -13,9 +13,12 @@ node_modules/
 .pnpm-store/
 .pnpm-debug.log
 
-# Build / Coverage
-dist/
-coverage/
+# Build (OBS/panel_system)
+OBS/panel_system/src/**/*.js
+OBS/panel_system/dist/
+OBS/panel_system/coverage/
+OBS/panel_system/.vitest/
+OBS/panel_system/node_modules/
 
 # Vitest
 .vitest/

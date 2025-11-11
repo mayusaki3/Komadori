@@ -13,8 +13,7 @@
  * - WebSocketサーバ起動や実プロセスエントリポイントは別ファイル(main.ts等)で実装する。
  */
 
-import fs from "node:fs";
-import path from "node:path";
+import * as fs from "node:fs";
 
 //
 // 型定義
