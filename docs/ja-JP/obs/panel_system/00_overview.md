@@ -25,5 +25,13 @@
 - マイクミュート、BGM 音量操作。
 - ステータス取得（例：外部ツールの状態を HTTP 経由で取得しボタンに表示）。
 
+## 4. 仕様
+
+- [パネルシステム機能仕様](01_spec.md)
+- [panel.json 仕様](02_json_format.md)
+- [実装コンポーネント仕様（要約）](03_components.md)
+- [Dock UI 仕様](04_dock_ui_spec.md)
+- [Stream Deck プラグイン仕様](05_streamdeck_spec.md)
+
 ---
 [目次](../../目次.md) > [OBS 関連ドキュメント インデックス](../index.md) > パネルシステム概要

@@ -13,11 +13,11 @@ panel_system の JSON 駆動制御が、仕様通りに動作することを自�
    - ページ状態管理
    - アクション→OBS/WebSocket/HTTP 呼び出しへのマッピング
 
-2. OBS Dock UI
+2. [Dock UI 単体テストケース定義](02_test_cases_dock.md)
    - 表示ロジック（受信データ→ボタン表示）
    - イベント送出（押下→Control Core 通知）
 
-3. Stream Deck プラグイン
+3. [Stream Deck プラグイン 単体テストケース定義](03_test_cases_sd_plugin.md)
    - イベント連携（押下→Control Core）
    - 表示連携（Control Core→Key Title/Icon）
 

@@ -1,4 +1,4 @@
-[目次](../../目次.md) > [OBS 関連ドキュメント インデックス](../index.md) > panel.json 仕様
+[目次](../../目次.md) > [OBS 関連ドキュメント インデックス](../index.md) > [パネルシステム概要](00_overview.md) > panel.json 仕様
 
 # panel.json 仕様
 
@@ -19,4 +19,4 @@ panel_system のレイアウト・アクションを定義する単一設定フ�
 ```
 
 ---
-[目次](../../目次.md) > [OBS 関連ドキュメント インデックス](../index.md) > panel.json 仕様
+[目次](../../目次.md) > [OBS 関連ドキュメント インデックス](../index.md) > [パネルシステム概要](00_overview.md) > panel.json 仕様

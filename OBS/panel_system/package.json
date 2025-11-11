@@ -5,7 +5,12 @@
   "type": "module",
   "scripts": {
     "test": "vitest --run",
-    "test:coverage": "vitest --coverage --run"
+    "test:coverage": "vitest --coverage --run",
+    "build": "tsc",
+    "start": "pnpm build && node dist/server/main.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^2.1.9",

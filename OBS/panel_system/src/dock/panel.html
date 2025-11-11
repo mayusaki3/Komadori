@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <title>OBS Panel Dock</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 8px;
+      background: #111;
+      color: #fff;
+      font-family: system-ui, sans-serif;
+    }
+    #status {
+      font-size: 0.7rem;
+      margin-bottom: 4px;
+      color: #aaa;
+    }
+    #grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      grid-template-rows: repeat(3, 48px);
+      gap: 4px;
+    }
+    .btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 6px;
+      background: #333;
+      font-size: 0.7rem;
+      text-align: center;
+      padding: 4px;
+      cursor: pointer;
+      user-select: none;
+      box-sizing: border-box;
+    }
+    .btn.on {
+      background: #0a7;
+    }
+    .btn.disabled {
+      opacity: 0.3;
+      cursor: default;
+    }
+  </style>
+</head>
+<body>
+  <div id="status">DISCONNECTED</div>
+  <div id="grid"></div>
+
+  <script type="module">
+    // Control Core の WebSocket URL
+    const WS_URL = "ws://127.0.0.1:7345";
+
+    const statusEl = document.getElementById("status");
+    const gridEl = document.getElementById("grid");
+
+    let currentPage = "main";
+    let socket = null;
+
+    function connect() {
+      socket = new WebSocket(WS_URL);
+
+      socket.onopen = () => {
+        statusEl.textContent = "CONNECTED";
+      };
+
+      socket.onclose = () => {
+        statusEl.textContent = "DISCONNECTED - RETRYING";
+        setTimeout(connect, 2000);
+      };
+
+      socket.onerror = () => {
+        statusEl.textContent = "ERROR";
+      };
+
+      socket.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          handleMessage(msg);
+        } catch {
+          // 不正メッセージは無視
+        }
+      };
+    }
+
+    function handleMessage(msg) {
+      if (!msg || typeof msg.type !== "string") return;
+
+      switch (msg.type) {
+        case "page.update":
+          renderGrid(msg.payload);
+          break;
+        case "status.update":
+          // 状態連動は将来拡張。現時点では未使用。
+          break;
+        case "error":
+          console.warn("Core error:", msg.payload);
+          break;
+      }
+    }
+
+    function renderGrid(payload) {
+      if (!payload || !Array.isArray(payload.buttons)) return;
+
+      currentPage = payload.currentPage || currentPage;
+      gridEl.innerHTML = "";
+
+      const cells = new Map();
+
+      // 空セル 3x5 を先に作成
+      for (let y = 0; y < 3; y++) {
+        for (let x = 0; x < 5; x++) {
+          const btn = document.createElement("div");
+          btn.className = "btn disabled";
+          btn.dataset.x = String(x);
+          btn.dataset.y = String(y);
+          btn.textContent = "";
+          gridEl.appendChild(btn);
+          cells.set(`${x},${y}`, btn);
+        }
+      }
+
+      // 有効ボタンを上書き
+      for (const b of payload.buttons) {
+        const key = `${b.x},${b.y}`;
+        const btn = cells.get(key);
+        if (!btn) continue;
+
+        btn.className = "btn";
+        if (b.state === "on") btn.classList.add("on");
+        btn.textContent = b.label || "";
+        btn.onclick = () => sendClick(b.x, b.y);
+      }
+    }
+
+    function sendClick(x, y) {
+      if (!socket || socket.readyState !== WebSocket.OPEN) return;
+      const msg = {
+        type: "button.click",
+        payload: {
+          page: currentPage,
+          x,
+          y,
+          source: "dock"
+        }
+      };
+      socket.send(JSON.stringify(msg));
+    }
+
+    connect();
+  </script>
+</body>
+</html>
