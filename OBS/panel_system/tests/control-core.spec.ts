@@ -600,4 +600,211 @@ describe("ControlCore", () => {
     expect(update).toBeUndefined();
   });
 
+  it("TC-17: page.switch で page 未指定の場合 INVALID_ACTION エラー", async () => {
+    const { broadcaster, obs, http, sent } = createMocks();
+
+    const cfg = writeTempConfig("panel-missing-page-switch.json", {
+      version: 1,
+      pages: {
+        main: {
+          name: "Main",
+          buttons: [
+            {
+              x: 0,
+              y: 0,
+              label: "SW",
+              action: {
+                type: "page.switch"
+                // page をあえて指定しない
+              }
+            }
+          ]
+        }
+      }
+    });
+
+    const core = new ControlCore({ configPath: cfg, broadcaster, obs, http });
+    core.initialize();
+
+    await core.handleButtonClick({
+      type: "button.click",
+      payload: { page: "main", x: 0, y: 0, source: "dock" }
+    });
+
+    const err = sent.find((m) => m.type === "error");
+    expect(err?.payload?.code).toBe("INVALID_ACTION");
+  });
+
+  it("TC-18: http.get で url 未指定の場合 INVALID_ACTION エラー", async () => {
+    const { broadcaster, obs, http, sent } = createMocks();
+
+    const cfg = writeTempConfig("panel-missing-http-get-url.json", {
+      version: 1,
+      pages: {
+        main: {
+          name: "Main",
+          buttons: [
+            {
+              x: 0,
+              y: 0,
+              label: "GET",
+              action: {
+                type: "http.get",
+                // url なし
+                display: "status"
+              }
+            }
+          ]
+        }
+      }
+    });
+
+    const core = new ControlCore({ configPath: cfg, broadcaster, obs, http });
+    core.initialize();
+
+    await core.handleButtonClick({
+      type: "button.click",
+      payload: { page: "main", x: 0, y: 0, source: "dock" }
+    });
+
+    const err = sent.find((m) => m.type === "error");
+    expect(err?.payload?.code).toBe("INVALID_ACTION");
+    expect(http.get).not.toHaveBeenCalled();
+  });
+
+  it("TC-19: http.post で url 未指定の場合 INVALID_ACTION エラー", async () => {
+    const { broadcaster, obs, http, sent } = createMocks();
+
+    const cfg = writeTempConfig("panel-missing-http-post-url.json", {
+      version: 1,
+      pages: {
+        main: {
+          name: "Main",
+          buttons: [
+            {
+              x: 0,
+              y: 0,
+              label: "POST",
+              action: {
+                type: "http.post"
+                // url なし
+              }
+            }
+          ]
+        }
+      }
+    });
+
+    const core = new ControlCore({ configPath: cfg, broadcaster, obs, http });
+    core.initialize();
+
+    await core.handleButtonClick({
+      type: "button.click",
+      payload: { page: "main", x: 0, y: 0, source: "dock" }
+    });
+
+    const err = sent.find((m) => m.type === "error");
+    expect(err?.payload?.code).toBe("INVALID_ACTION");
+    expect(http.post).not.toHaveBeenCalled();
+  });
+
+  it("TC-20: switchPage を未初期化状態で呼ぶと NOT_INITIALIZED エラー", async () => {
+    const { broadcaster, obs, http, sent } = createMocks();
+    const core = new ControlCore({
+      // initialize を呼ばない
+      configPath: defaultConfigPath,
+      broadcaster,
+      obs,
+      http
+    });
+
+    // private メソッドだが runtime では呼べる
+    await (core as any).switchPage("main");
+
+    const err = sent.find((m) => m.type === "error");
+    expect(err?.payload?.code).toBe("NOT_INITIALIZED");
+  });
+
+  it("TC-21: switchPage に未定義ページを指定すると INVALID_PAGE エラー", async () => {
+    const { broadcaster, obs, http, sent } = createMocks();
+    const core = new ControlCore({ configPath: defaultConfigPath, broadcaster, obs, http });
+
+    core.initialize();
+    await (core as any).switchPage("unknown-page");
+
+    const err = sent.find((m) => m.type === "error");
+    expect(err?.payload?.code).toBe("INVALID_PAGE");
+  });
+
+  it("TC-22: updateStatusFromObs 失敗時に OBS_STATUS_FAILED エラー", async () => {
+    const { broadcaster, http, sent } = createMocks();
+
+    const obs: ObsController = {
+      setScene: vi.fn(),
+      toggleStream: vi.fn(),
+      toggleRecord: vi.fn(),
+      toggleMute: vi.fn(),
+      setSourceVisibility: vi.fn(),
+      getStatus: vi.fn().mockRejectedValue(new Error("NG"))
+    };
+
+    const core = new ControlCore({
+      configPath: defaultConfigPath,
+      broadcaster,
+      obs,
+      http
+    });
+
+    core.initialize();
+    await (core as any).updateStatusFromObs();
+
+    const err = sent.find((m) => m.type === "error");
+    expect(err?.payload?.code).toBe("OBS_STATUS_FAILED");
+  });
+
+  it("TC-23: http.get displayKey 指定だがレスポンスにキー無しの場合 label 未更新", async () => {
+    const { broadcaster, obs, sent } = createMocks();
+
+    const http: HttpClient = {
+      get: vi.fn().mockResolvedValue({ other: "XXX" }),
+      post: vi.fn()
+    };
+
+    const cfg = writeTempConfig("panel-http-display-missing-key.json", {
+      version: 1,
+      pages: {
+        main: {
+          name: "Main",
+          buttons: [
+            {
+              x: 0,
+              y: 0,
+              label: "STATUS",
+              action: { type: "http.get", url: "http://example", display: "status" }
+            }
+          ]
+        }
+      }
+    });
+
+    const core = new ControlCore({ configPath: cfg, broadcaster, obs, http });
+    core.initialize();
+
+    await core.handleButtonClick({
+      type: "button.click",
+      payload: { page: "main", x: 0, y: 0, source: "dock" }
+    });
+
+    // displayKey が見つからない場合の分岐を踏むことが目的
+    const pageUpdate = sent.findLast((m) => m.type === "page.update");
+    if (pageUpdate) {
+      // ラベルが "STATUS" のままであることを確認
+      expect(
+        pageUpdate.payload.buttons.some(
+          (b: any) => b.x === 0 && b.y === 0 && b.label === "STATUS"
+        )
+      ).toBe(true);
+    }
+  });
+
 });

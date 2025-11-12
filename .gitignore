@@ -17,11 +17,7 @@ node_modules/
 OBS/panel_system/src/**/*.js
 OBS/panel_system/dist/
 OBS/panel_system/coverage/
+OBS/panel_system/tests/*.json
+OBS/panel_system/tests/**/*.json
 OBS/panel_system/.vitest/
 OBS/panel_system/node_modules/
-
-# vitest 一時ファイル
-# tests/*.json
-# tests/**/*.json
-# coverage/
-# .vitest/

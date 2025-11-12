@@ -184,6 +184,77 @@ panel.json に基づく制御ロジックと、メッセージ入出力の正当
   - 起動エラー扱い
   - page.update を送信しない
 
+### TC-17: page.switch 必須パラメータ不足
+
+- 条件:
+  - `action.type = "page.switch"` だが `page` 未指定のボタンが存在する panel.json
+- 手順:
+  - Control Core を起動
+  - 対象ボタンに対する `button.click` を送信
+- 確認:
+  - `error` メッセージ（code=`INVALID_ACTION`）を送信する
+
+### TC-18: http.get 必須パラメータ不足
+
+- 条件:
+  - `action.type = "http.get"` だが `url` 未指定のボタン
+- 手順:
+  - Control Core を起動
+  - 対象ボタンに対する `button.click` を送信
+- 確認:
+  - `error` メッセージ（code=`INVALID_ACTION`）を送信
+  - HTTP クライアントは呼び出されない
+
+### TC-19: http.post 必須パラメータ不足
+
+- 条件:
+  - `action.type = "http.post"` だが `url` 未指定のボタン
+- 手順:
+  - Control Core を起動
+  - 対象ボタンに対する `button.click` を送信
+- 確認:
+  - `error` メッセージ（code=`INVALID_ACTION`）を送信
+  - HTTP クライアントは呼び出されない
+
+### TC-20: switchPage 未初期化呼び出し
+
+- 条件:
+  - Control Core 未初期化状態
+- 手順:
+  - `switchPage("main")` を直接呼び出し（テスト上の内部呼び出し）
+- 確認:
+  - `error` メッセージ（code=`NOT_INITIALIZED`）を送信
+
+### TC-21: switchPage 未定義ページ指定
+
+- 条件:
+  - panel.json に存在しないページ名を指定
+- 手順:
+  - Control Core 初期化後、`switchPage("unknown")` を内部的に呼び出し
+- 確認:
+  - `error` メッセージ（code=`INVALID_PAGE`）を送信
+
+### TC-22: OBS ステータス取得失敗
+
+- 条件:
+  - `obs.getStatus()` がエラーを投げる実装
+- 手順:
+  - Control Core 初期化後、ステータス更新処理（`updateStatusFromObs`）を実行
+- 確認:
+  - `error` メッセージ（code=`OBS_STATUS_FAILED`）を送信
+
+### TC-23: HTTP displayKey 不一致
+
+- 条件:
+  - `action.type = "http.get"`, `display` 指定あり
+  - HTTP 応答に `display` キーが存在しない
+- 手順:
+  - Control Core を起動
+  - 対象ボタンに対する `button.click` を送信
+- 確認:
+  - 例外なく処理完了する
+  - ラベル書き換えが行われない（元のラベルのまま）
+
 ## 4. 実装上の注意
 
 - 単体テストは `/OBS/panel_system/tests/` 配下に配置し、本ドキュメントの TestID と1対1対応させる。
