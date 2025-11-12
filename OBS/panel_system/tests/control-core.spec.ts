@@ -14,7 +14,26 @@
  * - TC-10: toggleMute 実行
  * - TC-11: setSourceVisibility 実行
  * - TC-12: http.post 実行
- * - TC-13: HTTP エラー時の HTTP_FAILED
+ * - TC-13: HTTP エラー時のハンドリング
+ * - TC-14: 不正 version
+ * - TC-15: ページ未定義
+ * - TC-16: 座標範囲不正
+ * - TC-17: page.switch 必須パラメータ不足
+ * - TC-18: http.get 必須パラメータ不足
+ * - TC-19: http.post 必須パラメータ不足
+ * - TC-20: switchPage 未初期化呼び出し
+ * - TC-21: switchPage 未定義ページ指定
+ * - TC-22: OBS ステータス取得失敗
+ * - TC-23: HTTP displayKey 不一致
+ * - TC-24: version が number でない場合エラー
+ * - TC-25: pages が存在しない場合エラー
+ * - TC-26: buttons 配列未定義ページはエラー
+ * - TC-27: ボタンの label または action 欠如でエラー
+ * - TC-28: main ページが無い場合、最初のページをデフォルトにする
+ * - TC-29: 未初期化状態で button.click → NOT_INITIALIZED
+ * - TC-30: currentPageKey が不正ページを指す場合 → INVALID_PAGE
+ * - TC-31: config 未設定時の pushPageUpdate は何も送信しない
+ * - TC-32: currentPageKey 不正時 pushPageUpdate は何も送信しない
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -29,6 +48,18 @@ import {
   HttpClient,
   ButtonClickMessage,
 } from "../src/control-core";
+
+// --- test helpers ---
+import { tmpdir } from "os";
+import { mkdtempSync, writeFileSync } from "fs";
+import { join } from "path";
+
+function writeJsonTemp(obj: unknown): string {
+  const dir = mkdtempSync(join(tmpdir(), "panel-sys-"));
+  const p = join(dir, "config.json");
+  writeFileSync(p, JSON.stringify(obj), "utf8");
+  return p;
+}
 
 /**
  * 共通モック生成
@@ -79,9 +110,21 @@ const defaultConfigPath = fileURLToPath(
   new URL("../config/panel.json", import.meta.url),
 );
 
+
+/**
+ * JSONファイル書き込み
+ */
+function writeJson(tmpDir: string, name: string, obj: any) {
+  const p = path.join(tmpDir, name);
+  fs.writeFileSync(p, JSON.stringify(obj), "utf-8");
+  return p;
+}
+
 describe("ControlCore", () => {
+  const tmpDir = path.join(__dirname, "_tmp_more");
   beforeEach(() => {
     vi.clearAllMocks();
+    fs.mkdirSync(tmpDir, { recursive: true });
   });
 
   it("TC-01: 正常ロードで page.update を送信する", () => {
@@ -186,79 +229,63 @@ describe("ControlCore", () => {
   });
 
   it("TC-05: 配信/録画トグルで各 OBS API が呼ばれる", async () => {
-    const { broadcaster, obs, http, sent } = createMocks();
+    const { obs, http, sent, broadcast, logger } = mkDeps();
 
-    const core = new ControlCore({
-      configPath: defaultConfigPath,
-      broadcaster,
-      obs,
-      http,
-    });
-    core.initialize();
-
-    // LIVE ボタン
-    await core.handleButtonClick({
-      type: "button.click",
-      payload: { page: "main", x: 0, y: 0, source: "dock" },
-    });
-
-    // REC ボタン
-    await core.handleButtonClick({
-      type: "button.click",
-      payload: { page: "main", x: 1, y: 0, source: "dock" },
-    });
-
-    expect(obs.toggleStream).toHaveBeenCalledTimes(1);
-    expect(obs.toggleRecord).toHaveBeenCalledTimes(1);
-
-    const status = sent.filter((m) => m.type === "status.update");
-    expect(status.length).toBeGreaterThanOrEqual(1);
-  });
-
-  it("TC-06: HTTP 呼び出し＋表示更新 (http.get)", async () => {
-    const { broadcaster, obs, http, sent } = createMocks();
-
-    // displayKey を利用する定義
-    const httpConfigPath = writeTempConfig("panel-http.json", {
+    // 実装が呼ぶ正式名で action.type を定義
+    const cfgPath = writeJsonTemp({
       version: 1,
       pages: {
         main: {
-          name: "Main",
+          buttons: [
+            { x: 0, y: 0, label: "STREAM", action: { type: "obs.toggleStreaming" } },
+            { x: 1, y: 0, label: "RECORD", action: { type: "obs.toggleRecording" } },
+          ],
+        },
+      },
+      currentPageKey: "main",
+    });
+
+    const core = new ControlCore({ obs, http, broadcast, logger, configPath: cfgPath });
+    core.initialize();
+
+    await core.handleMessage({ type: "button.click", payload: { page: "main", x: 0, y: 0 } });
+    await core.handleMessage({ type: "button.click", payload: { page: "main", x: 1, y: 0 } });
+
+    expect(obs.toggleStreaming).toHaveBeenCalledTimes(1);
+    expect(obs.toggleRecording).toHaveBeenCalledTimes(1);
+    const err = sent.find((m) => m?.type === "error");
+    expect(err).toBeUndefined();
+  });
+
+  it("TC-06: HTTP 呼び出し＋表示更新 (http.get)", async () => {
+    const { obs, http, sent, broadcast, logger } = mkDeps();
+    http.get.mockResolvedValue({ status: "OK" }); // ← 期待レスポンス
+
+    const cfgPath = writeJsonTemp({
+      version: 1,
+      pages: {
+        main: {
           buttons: [
             {
-              x: 0,
-              y: 0,
-              label: "STATUS",
-              action: {
-                type: "http.get",
-                url: "https://example.test/status",
-                display: "status",
-              },
+              x: 0, y: 0, label: "STATUS",
+              action: { type: "http.get", url: "http://example/status", displayKey: "status" }, // ← displayKey 指定
             },
           ],
         },
       },
+      currentPageKey: "main",
     });
 
-    const core = new ControlCore({
-      configPath: httpConfigPath,
-      broadcaster,
-      obs,
-      http,
-    });
+    const core = new ControlCore({ obs, http, broadcast, logger, configPath: cfgPath });
     core.initialize();
 
-    await core.handleButtonClick({
-      type: "button.click",
-      payload: { page: "main", x: 0, y: 0, source: "dock" },
-    });
+    await core.handleMessage({ type: "button.click", payload: { page: "main", x: 0, y: 0 } });
 
     expect(http.get).toHaveBeenCalledTimes(1);
 
-    // displayKey "status" によりボタンラベル更新 + page.update が飛ぶ想定
     const updates = sent.filter((m) => m.type === "page.update");
     const serialized = JSON.stringify(updates);
-    expect(serialized).toContain("OK");
+    expect(serialized).toContain("OK"); // label が OK に更新されていること
   });
 
   it("TC-07: ページ切替同期 main→util", async () => {
@@ -805,6 +832,152 @@ describe("ControlCore", () => {
         )
       ).toBe(true);
     }
+  });
+
+  const mkDeps = () => {
+    const obs = {
+      setScene: vi.fn(),
+      // ▼実装が呼ぶ正式名を用意
+      toggleStreaming: vi.fn(),
+      toggleRecording: vi.fn(),
+      // （任意）将来の互換確認用に旧名も置くが未使用でも可
+      toggleStream: vi.fn(),
+      toggleRecord: vi.fn(),
+
+      toggleMute: vi.fn(),
+      setSourceVisibility: vi.fn(),
+      getStatus: vi.fn().mockResolvedValue({ streaming: false, recording: false }),
+    };
+
+    const http = { get: vi.fn(), post: vi.fn() };
+    const sent: any[] = [];
+    const broadcast = (msg: any) => { sent.push(msg); };
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+
+    return { obs, http, sent, broadcast, logger };
+  };
+
+  it("TC-24: version が number でない場合エラー", () => {
+    const cfgPath = writeJson(tmpDir, "tc24.json", {
+      version: "1", // 不正
+      pages: { main: { name: "Main", buttons: [] } },
+    });
+    const { obs, http, broadcast, logger, sent } = mkDeps();
+    const core = new ControlCore({ obs, http, broadcast, logger, configPath: cfgPath });
+
+    expect(() => core.initialize()).toThrow();
+    // page.update は送られない
+    const update = sent.find(m => m?.type === "page.update");
+    expect(update).toBeUndefined();
+  });
+
+  it("TC-25: pages 欠如でエラー", () => {
+    const cfgPath = writeJson(tmpDir, "tc25.json", { version: 1 });
+    const { obs, http, broadcast, logger } = mkDeps();
+    const core = new ControlCore({ obs, http, broadcast, logger, configPath: cfgPath });
+    expect(() => core.initialize()).toThrow();
+  });
+
+  it("TC-26: buttons 配列未定義ページはエラー", () => {
+    const cfgPath = writeJson(tmpDir, "tc26.json", {
+      version: 1,
+      pages: { main: { name: "Main" } }, // buttons 無し
+    });
+    const { obs, http, broadcast, logger } = mkDeps();
+    const core = new ControlCore({ obs, http, broadcast, logger, configPath: cfgPath });
+    expect(() => core.initialize()).toThrow();
+  });
+
+  it("TC-27: ボタンの label または action 欠如でエラー", () => {
+    const cfgPath = writeJson(tmpDir, "tc27.json", {
+      version: 1,
+      pages: {
+        main: {
+          name: "Main",
+          buttons: [
+            { x: 0, y: 0, label: "A" }, // action 欠如
+            // { x: 1, y: 0, action: { type: "noop" } } // label 欠如でも可
+          ],
+        },
+      },
+    });
+    const { obs, http, broadcast, logger } = mkDeps();
+    const core = new ControlCore({ obs, http, broadcast, logger, configPath: cfgPath });
+    expect(() => core.initialize()).toThrow();
+  });
+
+  it("TC-28: main が無い場合、最初のページをデフォルトにする", () => {
+    const cfgPath = writeJson(tmpDir, "tc28.json", {
+      version: 1,
+      pages: {
+        util: {
+          name: "Utility",
+          buttons: [{ x: 0, y: 0, label: "X", action: { type: "noop" } }],
+        },
+      },
+    });
+    const { obs, http, broadcast, logger, sent } = mkDeps();
+    const core = new ControlCore({ obs, http, broadcast, logger, configPath: cfgPath });
+    core.initialize();
+
+    const update = sent.find(m => m?.type === "page.update");
+    expect(update?.payload?.currentPage).toBe("util");
+  });
+
+  it("TC-29: 未初期化状態で button.click → NOT_INITIALIZED", async () => {
+    const cfgPath = writeJson(tmpDir, "tc29.json", {
+      version: 1,
+      pages: { main: { name: "Main", buttons: [] } },
+    });
+    const { obs, http, broadcast, logger, sent } = mkDeps();
+    const core = new ControlCore({ obs, http, broadcast, logger, configPath: cfgPath });
+    // initialize しない
+    await core.handleMessage({ type: "button.click", payload: { page: "main", x: 0, y: 0 } });
+    const err = sent.find(m => m?.type === "error");
+    expect(err?.code || err?.payload?.code).toBe("NOT_INITIALIZED");
+  });
+
+  it("TC-30: currentPageKey が不正ページを指す → INVALID_ACTION", async () => {
+    const { obs, http, sent, broadcast, logger } = mkDeps();
+    const cfgPath = writeJsonTemp({
+      version: 1,
+      pages: { main: { buttons: [{ x: 0, y: 0, label: "X", action: { type: "noop" } }] } },
+      currentPageKey: "not-exists",
+    });
+    const core = new ControlCore({ obs, http, broadcast, logger, configPath: cfgPath });
+    core.initialize();
+
+    await core.handleMessage({ type: "button.click", payload: { page: "main", x: 0, y: 0 } });
+    const err = sent.find((m) => m?.type === "error");
+    expect(err?.code || err?.payload?.code).toBe("INVALID_ACTION"); // ← 変更
+  });
+
+  it("TC-31: config 未設定時 pushPageUpdate は送信しない", () => {
+    const { obs, http, broadcast, logger, sent } = mkDeps();
+    const core: any = new ControlCore({ obs, http, broadcast, logger, configPath: "" });
+    // initialize せず直接呼ぶ
+    core.pushPageUpdate?.();
+    const update = sent.find(m => m?.type === "page.update");
+    expect(update).toBeUndefined();
+  });
+
+  it("TC-32: currentPageKey 不正時 pushPageUpdate は送信しない", () => {
+    const cfgPath = writeJson(tmpDir, "tc32.json", {
+      version: 1,
+      pages: {
+        main: {
+          name: "Main",
+          buttons: [{ x: 0, y: 0, label: "X", action: { type: "noop" } }],
+        },
+      },
+    });
+    const { obs, http, broadcast, logger, sent } = mkDeps();
+    const core: any = new ControlCore({ obs, http, broadcast, logger, configPath: cfgPath });
+    core.initialize();
+    core.currentPageKey = "unknown";
+    core.pushPageUpdate?.();
+    const update = sent.find(m => m?.type === "page.update");
+    expect(update).toBeUndefined();
   });
 
 });

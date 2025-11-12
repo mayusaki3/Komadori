@@ -255,6 +255,95 @@ panel.json に基づく制御ロジックと、メッセージ入出力の正当
   - 例外なく処理完了する
   - ラベル書き換えが行われない（元のラベルのまま）
 
+### TC-24: version が number でない場合エラー
+
+- 条件:
+  - version: "1" の panel.json
+- 手順:
+  - ControlCore を該当 configPath で生成し initialize() 実行
+- 確認:
+  - initialize() が例外を投げる
+  - page.update は送信されない
+
+### TC-25: pages が存在しない場合エラー
+
+- 条件:
+  - version: 1 のみ定義し pages 欠如の panel.json
+- 手順:
+  - initialize()
+- 確認:
+  - 例外発生（'pages' is required 想定文言）
+  - page.update 無し
+
+### TC-26: buttons 配列未定義ページはエラー
+
+- 条件:
+  - pages: { main: { name: "Main" } } の panel.json
+- 手順:
+  - initialize()
+- 確認:
+  - 例外発生（has no buttons array 想定）
+  - page.update 無し
+
+## TC-27: ボタンの label または action 欠如でエラー
+
+- 条件:
+  - buttons: [{ x:0, y:0, label:"A" }] のように action欠如 等
+- 手順:
+  - initialize()
+- 確認:
+  - 例外発生（missing label or action 想定）
+  - page.update 無し
+
+## TC-28: main ページが無い場合、最初のページをデフォルトにする
+
+- 条件:
+  - pages: { util: { ... } } のみ定義
+- 手順:
+  - initialize()
+- 確認:
+  - 最初の page.update の currentPage が "util"
+  - 例外無し
+
+### TC-29: 未初期化状態で button.click → NOT_INITIALIZED
+
+- 条件:
+  - initialize() 未呼び出し
+- 手順:
+  - handleButtonClick({ page:"main", x:0, y:0, ... })
+- 確認:
+  - error メッセージ送信
+  - code が NOT_INITIALIZED
+
+### TC-30: currentPageKey が不正ページを指す場合 → INVALID_PAGE
+
+- 条件:
+  - 正常 initialize() 実行後、テスト側で (core as any).currentPageKey = "invalid" に書き換え
+- 手順:
+  - その状態で handleButtonClick 実行
+- 確認:
+  - error.code が INVALID_PAGE
+  - 他の副作用無し
+
+### TC-31: config 未設定時の pushPageUpdate は何も送信しない
+
+- 条件:
+  - const core = new ControlCore(...); のみ。initialize() 未実行
+- 手順:
+  - (core as any).pushPageUpdate() を直接呼ぶ
+- 確認:
+  - broadcast 呼び出し無し
+
+### TC-32: currentPageKey 不正時 pushPageUpdate は何も送信しない
+
+- 条件:
+  - initialize() 済み
+  - (core as any).currentPageKey = "unknown"
+- 手順:
+  - (core as any).pushPageUpdate() 実行
+- 確認:
+  - broadcast 呼び出し無し
+
 ## 4. 実装上の注意
 
 - 単体テストは `/OBS/panel_system/tests/` 配下に配置し、本ドキュメントの TestID と1対1対応させる。
