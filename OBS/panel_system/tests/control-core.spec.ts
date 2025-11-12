@@ -527,4 +527,77 @@ describe("ControlCore", () => {
     );
     expect(err).toBeTruthy();
   });
+
+  it("TC-14: 不正 version で起動エラーになり page.update を送信しない", () => {
+    const { broadcaster, obs, http, sent } = createMocks();
+
+    const invalidVersionPath = writeTempConfig("panel-invalid-version.json", {
+      version: 999,
+      pages: {
+        main: {
+          name: "Main",
+          buttons: [{ x: 0, y: 0, label: "A" }],
+        },
+      },
+    });
+
+    const core = new ControlCore({
+      configPath: invalidVersionPath,
+      broadcaster,
+      obs,
+      http,
+    });
+
+    expect(() => core.initialize()).toThrow();
+    const update = sent.find((m) => m.type === "page.update");
+    expect(update).toBeUndefined();
+  });
+
+  it("TC-15: ページ未定義で起動エラーになり page.update を送信しない", () => {
+    const { broadcaster, obs, http, sent } = createMocks();
+
+    const noPagesPath = writeTempConfig("panel-no-pages.json", {
+      version: 1,
+      pages: {},
+    });
+
+    const core = new ControlCore({
+      configPath: noPagesPath,
+      broadcaster,
+      obs,
+      http,
+    });
+
+    expect(() => core.initialize()).toThrow();
+    const update = sent.find((m) => m.type === "page.update");
+    expect(update).toBeUndefined();
+  });
+
+  it("TC-16: 座標範囲不正で起動エラーになり page.update を送信しない", () => {
+    const { broadcaster, obs, http, sent } = createMocks();
+
+    const outOfRangePath = writeTempConfig("panel-out-of-range.json", {
+      version: 1,
+      pages: {
+        main: {
+          name: "Main",
+          buttons: [
+            { x: 99, y: 0, label: "A" }, // 実装側の許容範囲外を想定
+          ],
+        },
+      },
+    });
+
+    const core = new ControlCore({
+      configPath: outOfRangePath,
+      broadcaster,
+      obs,
+      http,
+    });
+
+    expect(() => core.initialize()).toThrow();
+    const update = sent.find((m) => m.type === "page.update");
+    expect(update).toBeUndefined();
+  });
+
 });

@@ -154,6 +154,36 @@ panel.json に基づく制御ロジックと、メッセージ入出力の正当
   - `error` メッセージ（code=`HTTP_FAILED`）を送信する
   - 例外を呼び出し元へスローしない（プロセスが落ちない）
 
+### TC-14: 不正 version
+
+- 条件:
+  - version が未定義、またはサポート外の値を持つ panel.json
+- 手順:
+  - 不正な version を持つ panel.json を指定して Control Core を起動
+- 確認:
+  - 起動エラー扱い（例外、または error ログ相当）
+  - page.update を送信しない
+
+### TC-15: ページ未定義
+
+- 条件:
+  - pages が空、または有効なページ定義を含まない panel.json
+- 手順:
+  - 該当 panel.json を指定して Control Core を起動
+- 確認:
+  - 起動エラー扱い
+  - page.update を送信しない
+
+### TC-16: 座標範囲不正
+
+- 条件:
+  - 許容範囲外の x / y を持つボタン定義を含む panel.json
+- 手順:
+  - 該当 panel.json を指定して Control Core を起動
+- 確認:
+  - 起動エラー扱い
+  - page.update を送信しない
+
 ## 4. 実装上の注意
 
 - 単体テストは `/OBS/panel_system/tests/` 配下に配置し、本ドキュメントの TestID と1対1対応させる。
