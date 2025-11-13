@@ -13,17 +13,11 @@ export interface ClientBroadcaster {
 }
 
 export interface ObsController {
-  setScene(scene: string): Promise<void> | void;
-  startStreaming?(): Promise<void> | void;
-  stopStreaming?(): Promise<void> | void;
-  startRecording?(): Promise<void> | void;
-  stopRecording?(): Promise<void> | void;
-  /** テスト側が使う可能性があるトグル API（あれば優先） */
-  toggleStream?(): Promise<void> | void;
-  toggleRecord?(): Promise<void> | void;
-  toggleMute(source: string): Promise<void> | void;
-  setSourceVisibility(scene: string, source: string, visible: boolean): Promise<void> | void;
-  getStatus(): Promise<{ streaming: boolean; recording: boolean }>;
+  setScene?(name: string): Promise<void>;
+  toggleStreaming?(): Promise<void>;
+  toggleRecording?(): Promise<void>;
+  toggleMute?(source: string): Promise<void>;
+  setSourceVisibility?(source: string, visible: boolean): Promise<void>;
 }
 
 export interface HttpClient {
@@ -79,6 +73,8 @@ export class ControlCore {
   private config: PanelConfig | null = null;
   private currentPageKey: string | null = null;
   private invalidState: boolean = false;
+  private hasValidPageContext = true;
+  private initialized = false;
 
   constructor(options: ControlCoreOptions) {
     this.configPath = path.resolve(options.configPath);
@@ -110,16 +106,21 @@ export class ControlCore {
 
     // 不正ならエラー送出 + throw（TC-30 とは別。ここは起動時）
     if (!this.currentPageKey || !this.config.pages[this.currentPageKey]) {
-      this.sendError({ code: "INVALID_PAGE", message: "currentPageKey is invalid." });
-      this.invalidState = true;               // 以後の操作はガード
-      return;                                 // 例外は投げない
+      this.hasValidPageContext = false;
+      // ここでは sendError も pushPageUpdate も呼ばない
+      return; // 初期化は継続（例外なし）
     }
-
+    this.hasValidPageContext = true;
     this.pushPageUpdate();
+    this.initialized = true;
   }
 
   /** メッセージディスパッチ（テスト便宜用） */
   async handleMessage(msg: any): Promise<void> {
+    if (!this.initialized) {
+      this.sendError({ code: "NOT_INITIALIZED", message: "Core is not initialized." });
+      return;
+    }
     if (!msg || typeof msg.type !== "string") {
       this.sendError({ code: "INVALID_ACTION", message: "unknown message" });
       return;
@@ -127,10 +128,33 @@ export class ControlCore {
     const p = msg.payload ?? {};
     switch (msg.type) {
       case "button.click":
+        const page = msg.payload?.page;
+        if (!page) {
+          this.sendError({ code: "INVALID_ACTION", message: "payload.page is required." });
+          return;
+        }
+        if (page !== this.currentPageKey) {
+          this.sendError({ code: "INVALID_PAGE_CONTEXT", message: `Expected ${this.currentPageKey}, got ${page}` });
+          return;
+        }
         await this.handleButtonClick(p);
         return;
       case "page.switch":
-        await this.switchPage(p.page);
+        const next = action.page;
+        if (!next) {
+          this.sendError({ code: "INVALID_ACTION", message: "page is required." });
+          return;
+        }
+        if (!this.config.pages?.[next]) {
+          this.sendError({ code: "INVALID_PAGE", message: `Unknown page: ${next}` });
+          return;
+        }
+        if (next === this.currentPageKey) {
+          // no-op
+          return;
+        }
+        this.currentPageKey = next;
+        this.pushPageUpdate();
         return;
       default:
         this.sendError({ code: "INVALID_ACTION", message: "unknown message type" });
@@ -149,6 +173,11 @@ export class ControlCore {
     let page: string | undefined;
     let x: number | undefined;
     let y: number | undefined;
+
+    if (!this.hasValidPageContext || !this.currentPageKey || !this.config.pages[this.currentPageKey]) {
+      this.sendError({ code: "INVALID_ACTION", message: "invalid page context" });
+      return;
+    }
 
     if (typeof a === "object" && a && typeof a.type === "string" && a.type === "button.click") {
       page = a.payload?.page;
@@ -226,26 +255,21 @@ export class ControlCore {
         return;
 
       case "obs.toggleStreaming": {
-        // トグル API があれば最優先
-        if (this.obs.toggleStream) {
-          await this.obs.toggleStream();
-          return;
+        if (!this.obs?.toggleStreaming) {
+          this.sendError({ code: "INVALID_ACTION", message: "toggleStreaming not supported." });
+          break;
         }
-        const st = await this.obs.getStatus();
-        if (st.streaming) await this.obs.stopStreaming?.();
-        else await this.obs.startStreaming?.();
-        return;
+        await this.obs.toggleStreaming();
+        break;
       }
 
       case "obs.toggleRecording": {
-        if (this.obs.toggleRecord) {
-          await this.obs.toggleRecord();
-          return;
+        if (!this.obs?.toggleRecording) {
+          this.sendError({ code: "INVALID_ACTION", message: "toggleRecording not supported." });
+          break;
         }
-        const st = await this.obs.getStatus();
-        if (st.recording) await this.obs.stopRecording?.();
-        else await this.obs.startRecording?.();
-        return;
+        await this.obs.toggleRecording();
+        break;
       }
 
       case "obs.toggleMute":
@@ -311,7 +335,8 @@ export class ControlCore {
   private pushPageUpdate() {
     if (!this.config) return;
     if (this.invalidState) return;
-    if (!this.currentPageKey || !this.config.pages[this.currentPageKey]) return;
+    if (!this.hasValidPageContext) return;
+    if (!this.currentPageKey || !this.config?.pages?.[this.currentPageKey]) return;
     if (!this.config || !this.broadcaster) return;
 
     const key = this.currentPageKey ?? this.config.currentPageKey ?? "main";

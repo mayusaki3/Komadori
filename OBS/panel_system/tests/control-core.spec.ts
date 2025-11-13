@@ -54,10 +54,15 @@ import { tmpdir } from "os";
 import { mkdtempSync, writeFileSync } from "fs";
 import { join } from "path";
 
+/**
+ * 一時ディレクトリ直下に JSON を書き出して、そのファイルパスを返す。
+ * - 各テストケースをファイル面でも分離できる
+ * - 生成先例: {TMP}/panel-sys-xxxxxx/config.json
+ */
 function writeJsonTemp(obj: unknown): string {
   const dir = mkdtempSync(join(tmpdir(), "panel-sys-"));
   const p = join(dir, "config.json");
-  writeFileSync(p, JSON.stringify(obj), "utf8");
+  writeFileSync(p, JSON.stringify(obj, null, 2), "utf8");
   return p;
 }
 
@@ -980,4 +985,161 @@ describe("ControlCore", () => {
     expect(update).toBeUndefined();
   });
 
+  it("TC-33: 同一ページへの page.switch はノーオペ", async () => {
+    const cfgPath = writeJsonTemp({
+      version: 1,
+      currentPage: "main",
+      pages: {
+        main: { buttons: [{ x: 0, y: 0, label: "X", action: { type: "obs.setScene", scene: "A" } }] },
+        util: { buttons: [{ x: 0, y: 0, label: "Y", action: { type: "obs.setScene", scene: "B" } }] }
+      }
+    });
+
+    const { ControlCore } = await import("../src/control-core");
+    const { broadcaster, obs, http, sent } = createMocks();
+    const core = new ControlCore(cfgPath, broadcaster, obs, http);
+
+    await core.initialize();
+    sent.length = 0; // 初期の page.update をクリア
+
+    // すでに main の想定。main にもう一度切替要求。
+    await core.handleMessage({ type: "page.switch", payload: { page: "main" } });
+
+    expect(sent.find(m => m?.type === "page.update")).toBeUndefined();
+    expect(sent.find(m => m?.type === "error")).toBeUndefined();
+  });
+
+  it("TC-34: ページ文脈不一致 → INVALID_PAGE_CONTEXT", async () => {
+    const cfgPath = writeJsonTemp({
+      version: 1,
+      currentPage: "main",
+      pages: {
+        main: { buttons: [{ x: 0, y: 0, label: "X", action: { type: "obs.setScene", scene: "A" } }] },
+        util: { buttons: [{ x: 0, y: 0, label: "Y", action: { type: "obs.setScene", scene: "B" } }] }
+      }
+    });
+
+    const { ControlCore } = await import("../src/control-core");
+    const { broadcaster, obs, http, sent } = createMocks();
+    const core = new ControlCore(cfgPath, broadcaster, obs, http);
+
+    await core.initialize();
+    sent.length = 0;
+
+    // current: main。util ページの座標をわざと送る
+    await core.handleMessage({ type: "button.click", payload: { page: "util", x: 0, y: 0 } });
+
+    const err = sent.find(m => m?.type === "error");
+    expect(err?.code || err?.payload?.code).toBe("INVALID_PAGE_CONTEXT");
+    // アクション呼び出し副作用なし
+    expect(obs.setScene).not.toHaveBeenCalled();
+  });
+
+  it("TC-35: 複数アクションは順序を維持して実行", async () => {
+    const cfgPath = writeJsonTemp({
+      version: 1,
+      pages: {
+        main: {
+          buttons: [
+            { x: 0, y: 0, label: "SEQ", action: [
+              { type: "obs.setScene", scene: "A" },
+              { type: "http.get", url: "http://localhost/status", displayKey: "ok" }
+            ]}
+          ]
+        }
+      }
+    });
+
+    const { ControlCore } = await import("../src/control-core");
+    const { broadcaster, obs, http, sent } = createMocks();
+    const core = new ControlCore(cfgPath, broadcaster, obs, http);
+
+    await core.initialize();
+    sent.length = 0;
+
+    await core.handleMessage({ type: "button.click", payload: { page: "main", x: 0, y: 0 } });
+
+    expect(obs.setScene).toHaveBeenCalledTimes(1);
+    expect(http.get).toHaveBeenCalledTimes(1);
+    // 順序検証
+    expect(obs.setScene.mock.invocationCallOrder[0]).toBeLessThan(http.get.mock.invocationCallOrder[0]);
+  });
+
+  it("TC-36: page.switch 後の http.displayKey 更新は新ページへ反映", async () => {
+    const cfgPath = writeJsonTemp({
+      version: 1,
+      pages: {
+        main: { buttons: [ { x: 0, y: 0, label: "GO", action: [
+          { type: "page.switch", page: "util" },
+          { type: "http.get", url: "http://localhost/ok", displayKey: "result" }
+        ] } ] },
+        util: { buttons: [ { x: 0, y: 0, label: "TARGET" } ] }
+      }
+    });
+
+    const { ControlCore } = await import("../src/control-core");
+    const { broadcaster, obs, http, sent } = createMocks();
+    http.get.mockResolvedValue({ ok: true, status: 200, data: { result: "OK" } });
+
+    const core = new ControlCore(cfgPath, broadcaster, obs, http);
+    await core.initialize();
+    sent.length = 0;
+
+    await core.handleMessage({ type: "button.click", payload: { page: "main", x: 0, y: 0 } });
+
+    const updates = sent.filter(m => m?.type === "page.update");
+    const serialized = JSON.stringify(updates);
+    expect(serialized).toContain('"currentPage":"util"');
+    expect(serialized).toContain('"label":"OK"');
+  });
+
+  it("TC-37: http.get displayKey 不在 → 'N/A' で更新＋page.update", async () => {
+    const cfgPath = writeJsonTemp({
+      version: 1,
+      pages: { main: { buttons: [ { x: 0, y: 0, label: "STATUS", action: [
+        { type: "http.get", url: "http://localhost/ok", displayKey: "missing_key" }
+      ] } ] } }
+    });
+
+    const { ControlCore } = await import("../src/control-core");
+    const { broadcaster, obs, http, sent } = createMocks();
+    http.get.mockResolvedValue({ ok: true, status: 200, data: { result: "OK" } });
+
+    const core = new ControlCore(cfgPath, broadcaster, obs, http);
+    await core.initialize();
+    sent.length = 0;
+
+    await core.handleMessage({ type: "button.click", payload: { page: "main", x: 0, y: 0 } });
+
+    const updates = sent.filter(m => m?.type === "page.update");
+    const serialized = JSON.stringify(updates);
+    expect(serialized).toContain('"label":"N/A"');
+  });
+
+  it("TC-38: 未知アクションは INVALID_ACTION を送って継続実行", async () => {
+    const cfgPath = writeJsonTemp({
+      version: 1,
+      pages: {
+        main: { buttons: [ { x: 0, y: 0, label: "MIX", action: [
+          // 存在しない type
+          { type: "unknown.action" as any },
+          { type: "obs.toggleMute", source: "Mic/Aux" }
+        ] } ] }
+      }
+    });
+
+    const { ControlCore } = await import("../src/control-core");
+    const { broadcaster, obs, http, sent } = createMocks();
+
+    const core = new ControlCore(cfgPath, broadcaster, obs, http);
+    await core.initialize();
+    sent.length = 0;
+
+    await core.handleMessage({ type: "button.click", payload: { page: "main", x: 0, y: 0 } });
+
+    const err = sent.find(m => m?.type === "error");
+    expect(err?.code || err?.payload?.code).toBe("INVALID_ACTION");
+    expect(obs.toggleMute).toHaveBeenCalledTimes(1);
+  });
+  
 });
