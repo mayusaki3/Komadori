@@ -997,7 +997,7 @@ describe("ControlCore", () => {
 
     const { ControlCore } = await import("../src/control-core");
     const { broadcaster, obs, http, sent } = createMocks();
-    const core = new ControlCore(cfgPath, broadcaster, obs, http);
+    const core: any = new ControlCore({ obs, http, broadcast, logger, configPath: cfgPath });
 
     await core.initialize();
     sent.length = 0; // 初期の page.update をクリア
@@ -1021,7 +1021,7 @@ describe("ControlCore", () => {
 
     const { ControlCore } = await import("../src/control-core");
     const { broadcaster, obs, http, sent } = createMocks();
-    const core = new ControlCore(cfgPath, broadcaster, obs, http);
+    const core: any = new ControlCore({ obs, http, broadcast, logger, configPath: cfgPath });
 
     await core.initialize();
     sent.length = 0;
@@ -1052,7 +1052,7 @@ describe("ControlCore", () => {
 
     const { ControlCore } = await import("../src/control-core");
     const { broadcaster, obs, http, sent } = createMocks();
-    const core = new ControlCore(cfgPath, broadcaster, obs, http);
+    const core: any = new ControlCore({ obs, http, broadcast, logger, configPath: cfgPath });
 
     await core.initialize();
     sent.length = 0;
@@ -1081,7 +1081,7 @@ describe("ControlCore", () => {
     const { broadcaster, obs, http, sent } = createMocks();
     http.get.mockResolvedValue({ ok: true, status: 200, data: { result: "OK" } });
 
-    const core = new ControlCore(cfgPath, broadcaster, obs, http);
+    const core: any = new ControlCore({ obs, http, broadcast, logger, configPath: cfgPath });
     await core.initialize();
     sent.length = 0;
 
@@ -1105,7 +1105,7 @@ describe("ControlCore", () => {
     const { broadcaster, obs, http, sent } = createMocks();
     http.get.mockResolvedValue({ ok: true, status: 200, data: { result: "OK" } });
 
-    const core = new ControlCore(cfgPath, broadcaster, obs, http);
+    const core: any = new ControlCore({ obs, http, broadcast, logger, configPath: cfgPath });
     await core.initialize();
     sent.length = 0;
 
@@ -1131,7 +1131,7 @@ describe("ControlCore", () => {
     const { ControlCore } = await import("../src/control-core");
     const { broadcaster, obs, http, sent } = createMocks();
 
-    const core = new ControlCore(cfgPath, broadcaster, obs, http);
+    const core: any = new ControlCore({ obs, http, broadcast, logger, configPath: cfgPath });
     await core.initialize();
     sent.length = 0;
 

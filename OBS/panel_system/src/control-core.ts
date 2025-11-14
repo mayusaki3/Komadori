@@ -169,6 +169,16 @@ export class ControlCore {
    *  - (page?, x, y)
    */
   async handleButtonClick(a: any, b?: number, c?: number): Promise<void> {
+    // 初期化が未完了なら NOT_INITIALIZED
+    if (!this.initialized || !this.config) {
+      return this.sendError({ code: "NOT_INITIALIZED", message: "Core is not initialized." });
+    }
+
+    // currentPageKey が未設定/不正なら INVALID_ACTION（← TC-30 要件）
+    if (!this.currentPageKey) {
+      return this.sendError({ code: "INVALID_ACTION", message: "Current page is invalid." });
+    }
+
     // 引数正規化
     let page: string | undefined;
     let x: number | undefined;
@@ -205,10 +215,9 @@ export class ControlCore {
     const pageKey = page ?? this.currentPageKey;
     const pageCfg = this.config.pages[pageKey];
     if (!pageCfg) {
-      // currentPageKey を参照していて不正なら INVALID_PAGE、それ以外は文脈不正
-      const code = pageKey === this.currentPageKey ? "INVALID_PAGE" : "INVALID_PAGE_CONTEXT";
-      this.sendError({ code, message: `invalid page: ${pageKey}` });
-      return;
+      // 現在ページとして解決できないなら INVALID_ACTION
+      const code = pageKey === this.currentPageKey ? "INVALID_ACTION" : "INVALID_PAGE_CONTEXT";
+      return this.sendError({ code, message: `Page not found: ${pageKey}` });
     }
     const btn = pageCfg.buttons?.find((b) => b.x === x && b.y === y);
     if (!btn) {
@@ -338,6 +347,9 @@ export class ControlCore {
     if (!this.hasValidPageContext) return;
     if (!this.currentPageKey || !this.config?.pages?.[this.currentPageKey]) return;
     if (!this.config || !this.broadcaster) return;
+    if (!this.config || !this.currentPageKey || !this.config.pages[this.currentPageKey]) {
+      return;
+    }
 
     const key = this.currentPageKey ?? this.config.currentPageKey ?? "main";
     const page = this.config.pages?.[key];
