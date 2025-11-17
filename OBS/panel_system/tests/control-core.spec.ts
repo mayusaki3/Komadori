@@ -250,7 +250,12 @@ describe("ControlCore", () => {
       currentPageKey: "main",
     });
 
-    const core = new ControlCore({ obs, http, broadcast, logger, configPath: cfgPath });
+    const core = new ControlCore({
+      configPath: cfgPath,
+      broadcaster: broadcast,
+      obs,
+      http,
+    });
     core.initialize();
 
     await core.handleMessage({ type: "button.click", payload: { page: "main", x: 0, y: 0 } });
@@ -281,7 +286,12 @@ describe("ControlCore", () => {
       currentPageKey: "main",
     });
 
-    const core = new ControlCore({ obs, http, broadcast, logger, configPath: cfgPath });
+    const core = new ControlCore({
+      configPath: cfgPath,
+      broadcaster: broadcast,
+      obs,
+      http,
+    });
     core.initialize();
 
     await core.handleMessage({ type: "button.click", payload: { page: "main", x: 0, y: 0 } });
