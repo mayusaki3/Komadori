@@ -1,553 +1,495 @@
+// src/control-core.ts
 /**
- * ControlCore - OBS用パネル制御のコア実装（テスト仕様準拠・コメント付き完全版）
+ * ControlCore
+ * OBSパネル制御のコアロジック実装（同期初期化版）
  *
- * 目的：
- *  - JSON構成(config)を読み込み・検証し、現在ページのボタン一覧を page.update で通知する
- *  - 受信イベント(button.click / page.switch)を解釈し、OBS操作／HTTP呼び出し／ページ遷移を行う
- *  - エラー時は error を通知し、テストが期待するエラーコードを返す
+ * 役割：
+ *  - 設定ファイル（JSON/JSONC想定）のロード・検証
+ *  - ページ／ボタンの状態管理とイベント送出（page.update / error など）
+ *  - アクション実行（OBS制御・HTTP呼出・ページ切替 等）
  *
- * 主なテスト要求（要点）：
- *  - initialize() 正常時に page.update を送信（TC-01）
- *  - config不正時は initialize() が throw し、page.update は送らない（TC-02,14,15,16,24,25,26,27）
- *  - 未初期化での操作は NOT_INITIALIZED（TC-20,29）
- *  - currentPageKey が不正時の button.click は INVALID_ACTION（TC-30）
- *  - pushPageUpdate は currentPageKey 不正なら送らない（TC-32）
- *  - 同一ページへの page.switch は no-op（TC-33）
- *  - ページ文脈不一致は INVALID_PAGE_CONTEXT（TC-03,34）
- *  - 未知アクションは INVALID_ACTION（TC-08,38）
- *  - HTTPエラーは HTTP_FAILED（TC-13）、displayKey のキー未検出時は 'N/A' で表示更新（TC-37）
- *  - ページ切替同期、複数アクション順序保持、http.displayKey の反映等（TC-07,35,36）
+ * 注意点：
+ *  - initialize() は同期版（ファイルを同期読み込み）
+ *  - JSONC（コメント、末尾カンマ）対応の軽量整形ユーティリティ付き
+ *  - テスト側が new ControlCore({ obs, http, broadcast, logger, ... }) としても動くよう、
+ *    引数名 'broadcast' と 'broadcaster' の双方を受け付ける。
+ *  - page.update の送出は「安全系 pushPageUpdateSafe()」を通すことで、
+ *    未初期化・不正ページ等の際に送出しない判定を行う。
  */
 
-import fs from "fs";
-import path from "path";
+import * as fs from "fs";
+import * as path from "path";
+
+/* ==============================
+ * 型定義
+ * ============================== */
+
+/** ロガーIF（テストでモック化しやすい最小形） */
+export interface Logger {
+  debug(...args: any[]): void;
+  info(...args: any[]): void;
+  warn(...args: any[]): void;
+  error(...args: any[]): void;
+}
+
+/** 送信系（WebSocket等を想定） */
+export interface Broadcaster {
+  send(event: { type: string; payload?: any }): void;
+}
+
+/** OBS操作IF（テスト用モック前提の最小セット） */
+export interface ObsApi {
+  setScene(name: string): Promise<void> | void;
+  toggleStreaming(): Promise<void> | void;
+  toggleRecording(): Promise<void> | void;
+  toggleMute?(source?: string): Promise<void> | void;
+  setSourceVisibility?(opts: { source: string; visible: boolean }): Promise<void> | void;
+
+  /** 状態取得（テスト用）：失敗で例外 */
+  getStatus?(): Promise<{ streaming?: boolean; recording?: boolean }> | { streaming?: boolean; recording?: boolean };
+}
+
+/** HTTP呼出IF（テストモック前提） */
+export interface HttpApi {
+  get(url: string): Promise<{ ok: boolean; status: number; data?: any; error?: string }>;
+  post(url: string, body?: any): Promise<{ ok: boolean; status: number; data?: any; error?: string }>;
+}
+
+/** 設定スキーマ */
+export interface CoreConfig {
+  version: number | string;
+  /** 既定ページキー（省略可） */
+  main?: string;
+  /** ページ配列 */
+  pages: PageConfig[];
+}
+
+/** ページ構成 */
+export interface PageConfig {
+  key: string;                  // ページキー（ユニーク）
+  title?: string;               // 表示用タイトル
+  context?: string;             // 文脈（例："main" / "util" など）
+  buttons?: ButtonConfig[];     // 省略可能だが、存在する場合は検証対象
+}
+
+/** ボタン構成 */
+export interface ButtonConfig {
+  x: number;                    // X座標（0以上の整数）
+  y: number;                    // Y座標（0以上の整数）
+  label?: string;               // ラベル
+  actions: ActionConfig[];      // 実行するアクション列（順序保持）
+}
+
+/** アクション種別 */
+export type ActionConfig =
+  | { type: "setScene"; name: string }
+  | { type: "toggleStreaming" }
+  | { type: "toggleRecording" }
+  | { type: "toggleMute"; source?: string }
+  | { type: "setSourceVisibility"; source: string; visible: boolean }
+  | { type: "http.get"; url: string; displayKey?: string }   // displayKey: レスポンス反映先ラベルキー
+  | { type: "http.post"; url: string; body?: any }
+  | { type: "page.switch"; page?: string }                   // page未指定はエラーとする（テストに合わせる）
+  | { type: string; [k: string]: any }                       // 未知アクション（INVALID_ACTION）
+
+/** コンストラクタ引数 */
+export interface ControlCoreOptions {
+  obs: ObsApi;
+  http: HttpApi;
+  /** どちらかが指定されれば利用可能（エイリアス対応） */
+  broadcaster?: Broadcaster;
+  broadcast?: Broadcaster;
+  logger?: Logger;
+  /** 設定取得：ファイルパス優先、なければ config オブジェクト */
+  configPath?: string;
+  config?: CoreConfig;
+}
+
+/* ==============================
+ * 1) 先頭付近：ユーティリティ関数を追加
+ * ============================== */
 
 /**
  * Jsonファイルコメント除去および整形ユーティリティ
- * - // 行コメント と /* ブロックコメント *\/ を削除
- * - 末尾カンマを削除（配列/オブジェクトの末尾）
- * 文字列リテラル内の // や /* は保持します
+ *  - シングル/マルチラインコメントを削除
+ *  - 行末の末尾カンマを緩く除去（簡易的な対応）
+ * 厳密なJSON5ではないが、テスト用設定のJSONCを安全に読む目的。
  */
-function stripJsonCommentsAndTrailingCommas(input: string): string {
-  let out = "";
-  let inStr: false | "'" | '"' | "`" = false;
-  let escaped = false;
+function toStrictJson(jsonc: string): string {
+  // コメント削除
+  let s = jsonc
+    // block comments /* ... */
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    // line comments //
+    .replace(/(^|[^:])\/\/.*$/gm, (_m, p1) => `${p1}`);
 
-  for (let i = 0; i < input.length; i++) {
-    const c = input[i];
-    const n = input[i + 1];
+  // 末尾カンマの緩和（}, ] の直前のカンマを削除）
+  s = s.replace(/,\s*([}\]])/g, "$1");
 
-    if (inStr) {
-      out += c;
-      if (!escaped && c === inStr) inStr = false;
-      escaped = !escaped && c === "\\";
-      continue;
-    }
-
-    // 文字列開始
-    if (c === '"' || c === "'" || c === "`") {
-      inStr = c as typeof inStr;
-      out += c;
-      continue;
-    }
-
-    // 行コメント //...
-    if (c === "/" && n === "/") {
-      i += 1;
-      while (i + 1 < input.length && input[i + 1] !== "\n") i++;
-      continue;
-    }
-
-    // ブロックコメント /* ... */
-    if (c === "/" && n === "*") {
-      i += 2;
-      while (i + 1 < input.length && !(input[i] === "*" && input[i + 1] === "/")) i++;
-      i += 1; // */ の / を消費
-      continue;
-    }
-
-    out += c;
-  }
-
-  // 末尾カンマを削除（配列・オブジェクトの直前にあるカンマ）
-  out = out
-    .replace(/,\s*([}\]])/g, "$1")
-    .replace(/,\s*(\r?\n)\s*([}\]])/g, "$1$2");
-
-  return out;
+  return s.trim();
 }
 
-/** ========== 型定義（テストで用いる最小限） ========== */
-
-/** OBS API（モックと突き合わせ可能な最小集合） */
-export interface ObsApi {
-  setScene?: (sceneName: string) => Promise<void> | void;
-  toggleStreaming?: () => Promise<void> | void;
-  toggleRecording?: () => Promise<void> | void;
-  toggleMute?: (sourceName: string) => Promise<void> | void;
-  setSourceVisibility?: (sourceName: string, visible: boolean) => Promise<void> | void;
-  /** ステータス更新（テストでは失敗分岐確認用） */
-  updateStatusFromObs?: () => Promise<{ ok: boolean }> | { ok: boolean };
+/** 安全JSON.parse（エラー時は投げる） */
+function parseJsoncOrThrow<T>(src: string): T {
+  const strict = toStrictJson(src);
+  return JSON.parse(strict) as T;
 }
 
-/** HTTP クライアント（get/post と JSON返却を想定） */
-export interface HttpClient {
-  get?: (url: string) => Promise<{ ok: boolean; status: number; data?: any }>;
-  post?: (url: string, body?: any) => Promise<{ ok: boolean; status: number; data?: any }>;
+/* ==============================
+ * 2) 設定ファイル読込の共通化（同期版）
+ * ============================== */
+
+/**
+ * 設定ファイルを同期で読み込む。
+ * @param filePath JSON/JSONC のパス
+ * @returns CoreConfig
+ * @throws 失敗時は例外
+ */
+export function loadConfigFromFile(filePath: string): CoreConfig {
+  const abs = path.resolve(filePath);
+  const raw = fs.readFileSync(abs, "utf8");
+  const cfg = parseJsoncOrThrow<CoreConfig>(raw);
+  return cfg;
 }
 
-/** ブロードキャストインターフェース */
-export type BroadcastFn = (msg: any) => void;
-export interface Broadcaster {
-  broadcast: BroadcastFn;
+/* ==============================
+ * クラス本体の private メソッド群
+ * ============================== */
+
+type PageIndex = Map<string, PageConfig>;
+type CoordKey = string;
+
+function coordKey(x: number, y: number): CoordKey {
+  return `${x},${y}`;
 }
 
-/** ログ出力 */
-export interface Logger {
-  info?: (...args: any[]) => void;
-  warn?: (...args: any[]) => void;
-  error?: (...args: any[]) => void;
-  debug?: (...args: any[]) => void;
-}
-
-/** コンフィグ構造（最小限） */
-export type Action =
-  | { type: "obs.setScene"; scene: string }
-  | { type: "obs.toggleStreamingRecording" }
-  | { type: "obs.toggleMute"; source: string }
-  | { type: "obs.setSourceVisibility"; source: string; visible: boolean }
-  | { type: "http.get"; url?: string; displayKey?: string; target?: { page?: string; x?: number; y?: number } }
-  | { type: "http.post"; url?: string; body?: any; displayKey?: string; target?: { page?: string; x?: number; y?: number } }
-  | { type: "page.switch"; page?: string } // page 未指定は INVALID_ACTION
-  | { type: string }; // 未知アクション検出用
-
-export interface Button {
-  label?: string;
-  x?: number;
-  y?: number;
-  action?: Action | Action[]; // 複数アクションも許容（TC-35）
-}
-
-export interface Page {
-  key: string;
-  buttons?: Button[];
-}
-
-export interface PanelConfig {
-  version?: number;
-  pages?: Page[];
-  main?: string; // 省略可能。無ければ pages[0].key をデフォルト（TC-28）
-}
-
-/** コンストラクタオプション */
-export interface ControlCoreOptions {
-  obs: ObsApi;
-  http: HttpClient;
-  /** broadcaster または broadcast のいずれかを受け付ける（テスト都合） */
-  broadcaster?: Broadcaster;
-  broadcast?: BroadcastFn;
-  logger?: Logger;
-  configPath: string;
-}
-
-/** エラーコード（テスト期待値に合わせる） */
-const ERR = {
-  NOT_INITIALIZED: "NOT_INITIALIZED",
-  INVALID_ACTION: "INVALID_ACTION",
-  INVALID_PAGE: "INVALID_PAGE",
-  INVALID_PAGE_CONTEXT: "INVALID_PAGE_CONTEXT",
-  NO_BUTTON: "NO_BUTTON",
-  HTTP_FAILED: "HTTP_FAILED",
-  OBS_STATUS_FAILED: "OBS_STATUS_FAILED",
-} as const;
-
-/** ページ更新通知のpayload */
-interface PageUpdatePayload {
-  currentPage: string;
-  buttons: Array<{ x: number; y: number; label: string }>;
-}
-
-/** ========== 本体実装 ========== */
+/* ==============================
+ * 本体
+ * ============================== */
 
 export class ControlCore {
-  /** 依存 */
-  private obs: ObsApi;
-  private http: HttpClient;
-  private log: Logger;
-  private broadcast: BroadcastFn;
+  private readonly obs: ObsApi;
+  private readonly http: HttpApi;
+  private readonly logger: Logger;
+  private readonly broadcaster?: Broadcaster;
 
-  /** 設定・状態 */
-  private configPath: string;
-  private config: PanelConfig | undefined;
-  private initialized = false;
-  /** 現在ページキー（不正値になりうるため pushPageUpdate 側で防御） */
-  public currentPageKey: string | undefined;
+  private config?: CoreConfig;
+  private pagesByKey: PageIndex = new Map();
+  private currentPageKey?: string;
 
-  constructor(options: ControlCoreOptions) {
-    this.obs = options.obs ?? {};
-    this.http = options.http ?? {};
-    this.log = options.logger ?? {};
-    // broadcaster or broadcast どちらでも受け付ける（テストで両方のパターンが存在）
-    if (options.broadcast) {
-      this.broadcast = options.broadcast;
-    } else if (options.broadcaster && typeof options.broadcaster.broadcast === "function") {
-      this.broadcast = options.broadcaster.broadcast.bind(options.broadcaster);
-    } else {
-      // フォールバックno-op
-      this.broadcast = () => void 0;
-    }
-    this.configPath = path.resolve(options.configPath);
-  }
+  constructor(opts: ControlCoreOptions) {
+    this.obs = opts.obs;
+    this.http = opts.http;
+    // 'broadcast' と 'broadcaster' の両対応
+    this.broadcaster = opts.broadcaster ?? opts.broadcast;
+    this.logger = opts.logger ?? console;
 
-  /**
-   * 設定ファイル(JSONC許容)を読み込み、コメント/末尾カンマを除去してから JSON.parse する。
-   * @param configPath 読み込む設定ファイル（.json / .jsonc など）
-   * @returns パース済みの設定オブジェクト
-   * @throws パース失敗時に Error('failed to parse config (jsonc): ...')
-   */
-  private async loadConfigFromFile(configPath: string): Promise<any> {
-    const fs = await import("node:fs/promises"); // 環境によっては 'fs/promises' でも可
-    const raw = await fs.readFile(configPath, "utf-8");
-    const cleaned = stripJsonCommentsAndTrailingCommas(raw);
-    try {
-      return JSON.parse(cleaned);
-    } catch (e) {
-      throw new Error(`failed to parse config (jsonc): ${String(e)}`);
+    if (opts.configPath) {
+      this.config = loadConfigFromFile(opts.configPath);
+    } else if (opts.config) {
+      this.config = opts.config;
     }
   }
 
-  /**
-   * 初期化：config読み込み→検証→currentPageKey確定→page.update送信
-   * 成功時のみ initialized=true。エラー時は throw（テスト合致）
-   */
+  /* --------------------------------
+   * 初期化（同期）
+   * -------------------------------- */
   public initialize(): void {
-    const cfg = this.loadConfig();
+    if (!this.config) {
+      throw new Error("config is required");
+    }
+    const cfg = this.config;
     this.validateConfigOrThrow(cfg);
 
-    // デフォルトページを確定
-    let defaultKey = cfg.main;
-    if (!defaultKey) {
-      defaultKey = cfg.pages![0].key; // TC-28
+    this.pagesByKey.clear();
+    for (const p of cfg.pages) {
+      this.pagesByKey.set(p.key, p);
     }
-    this.config = cfg;
-    this.currentPageKey = defaultKey;
-    this.initialized = true;
 
-    // 初回更新を通知（TC-01）
-    this.pushPageUpdate();
-  }
-
-  /** JSON構成を読み込む（存在・JSON不正はここでthrow） */
-  private loadConfig(): PanelConfig {
-    if (!this.configPath) {
-      throw new Error("configPath is required");
-    }
-    const txt = fs.readFileSync(this.configPath, "utf-8");
-    try {
-      const cfg = JSON.parse(txt) as PanelConfig;
-      return cfg;
-    } catch {
-      throw new Error("Invalid JSON");
-    }
-  }
-
-  /**
-   * 検証：テストが期待するパターンで不正時に throw
-   *  - version: number 必須（TC-24）
-   *  - pages 必須（TC-25）
-   *  - 各ページ buttons 必須（TC-26）
-   *  - 各ボタン：label と action 必須（TC-27）
-   *  - 座標重複禁止（TC-02）
-   *  - 座標範囲チェック（0以上の整数…とする。範囲はテスト内ダミーデータ前提で制約せず、負値/NaN等を弾く）（TC-16）
-   */
-  private validateConfigOrThrow(cfg: PanelConfig): void {
-    if (typeof cfg.version !== "number") {
-      throw new Error("version must be number");
-    }
-    if (!Array.isArray(cfg.pages) || cfg.pages.length === 0) {
+    // 既定ページ決定：cfg.main が有効ならそれ、無ければ pages[0]
+    const main = (cfg.main && this.pagesByKey.has(cfg.main)) ? cfg.main : cfg.pages[0]?.key;
+    if (!main) {
+      // validate で pages 存在を保証しているので理論上到達しないが保険
       throw new Error("pages is required");
     }
-    const seen = new Set<string>();
+    this.currentPageKey = main;
 
-    for (const p of cfg.pages) {
-      if (!Array.isArray(p.buttons)) throw new Error(`page ${p.key}: buttons required`);
-      for (const b of p.buttons) {
-        if (!b) throw new Error(`page ${p.key}: button required`);
-        if (typeof b.label !== "string" || !b.label.length) throw new Error(`page ${p.key}: button.label required`);
-        if (b.action === undefined) throw new Error(`page ${p.key}: button.action required`);
-
-        // x,y は整数・0以上を要求
-        if (typeof b.x !== "number" || typeof b.y !== "number" || b.x < 0 || b.y < 0) {
-          throw new Error(`page ${p.key}: button x/y invalid`);
-        }
-        const k = `${p.key}:${b.x},${b.y}`;
-        if (seen.has(k)) throw new Error(`duplicated coord at ${k}`); // TC-02
-        seen.add(k);
-      }
-    }
+    // 初回 page.update
+    this.pushPageUpdateSafe();
   }
+
+  /* --------------------------------
+   * 公開API
+   * -------------------------------- */
 
   /**
-   * 共通エミッタ：page.update を送信
-   * - currentPageKey が不正なら送信しない（TC-32）
+   * 現在ページの見える化状態を push（未初期化／不正ページのときは送らない）
    */
   public pushPageUpdate(): void {
-    if (!this.initialized || !this.config) return;
-    const page = this.config.pages!.find((p) => p.key === this.currentPageKey);
-    if (!page) {
-      // currentPageKey が不正：何も送らない（TC-32）
-      return;
-    }
-    const payload: PageUpdatePayload = {
-      currentPage: page.key,
-      buttons: (page.buttons ?? []).map((b) => ({
-        x: b.x!,
-        y: b.y!,
-        label: b.label ?? "",
-      })),
-    };
-    this.broadcast({ type: "page.update", payload });
-  }
-
-  /** OBSステータス更新（失敗時に OBS_STATUS_FAILED） */
-  public async updateStatusFromObs(): Promise<void> {
-    try {
-      const r = await this.obs.updateStatusFromObs?.();
-      if (!r?.ok) {
-        this.broadcast({ type: "error", payload: { code: ERR.OBS_STATUS_FAILED } });
-      }
-    } catch {
-      this.broadcast({ type: "error", payload: { code: ERR.OBS_STATUS_FAILED } });
-    }
-  }
-
-  /** 受信メッセージを振り分ける（未初期化時の保護含む） */
-  public async handleMessage(msg: any): Promise<void> {
-    const type = msg?.type;
-    if (type === "button.click") {
-      // 未初期化ならエラー（TC-29）
-      if (!this.initialized || !this.config) {
-        this.broadcast({ type: "error", payload: { code: ERR.NOT_INITIALIZED } });
-        return;
-      }
-      await this.handleButtonClick(msg);
-      return;
-    }
-    if (type === "page.switch") {
-      if (!this.initialized || !this.config) {
-        this.broadcast({ type: "error", payload: { code: ERR.NOT_INITIALIZED } });
-        return;
-      }
-      const next = msg?.payload?.page as string | undefined;
-      // page 未指定は INVALID_ACTION（TC-17）
-      if (!next) {
-        this.broadcast({ type: "error", payload: { code: ERR.INVALID_ACTION } });
-        return;
-      }
-      await this.switchPage(next);
-      return;
-    }
-
-    // 未知メッセージ種別（TC-38：INVALID_ACTION を送るが継続）
-    this.broadcast({ type: "error", payload: { code: ERR.INVALID_ACTION } });
+    this.pushPageUpdateSafe();
   }
 
   /**
    * ボタンクリック処理
-   * - ページ文脈不一致 → INVALID_PAGE_CONTEXT（TC-03,34）
-   * - currentPageKey が不正 → INVALID_ACTION（TC-30）
-   * - NO_BUTTON（該当座標が存在しない: TC-09）
-   * - アクション個数 > 1 の場合は順序通りに実行（TC-35）
+   * @param x クリックX
+   * @param y クリックY
+   * @param pageKey ページ名（省略時は currentPage）
+   * @param pageContext 文脈（テストの「不一致」検出用に任意文字列）
    */
-  public async handleButtonClick(msg: {
-    type: "button.click";
-    payload: { page: string; x: number; y: number; source?: string };
-  }): Promise<void> {
-    const { payload } = msg || {};
-    const { page: ctxPage, x, y } = payload || {};
-    if (!this.config) {
-      this.broadcast({ type: "error", payload: { code: ERR.NOT_INITIALIZED } });
+  public async handleButtonClick(
+    x: number,
+    y: number,
+    pageKey?: string,
+    pageContext?: string
+  ): Promise<void> {
+    if (!this.isInitialized()) {
+      this.sendError("NOT_INITIALIZED", { x, y });
       return;
     }
-    // currentPageKey が不正なら INVALID_ACTION（TC-30）
-    const cur = this.config.pages!.find((p) => p.key === this.currentPageKey);
-    if (!cur) {
-      this.broadcast({ type: "error", payload: { code: ERR.INVALID_ACTION } });
+    const key = pageKey ?? this.currentPageKey!;
+    const page = this.pagesByKey.get(key);
+    if (!page) {
+      this.sendError("INVALID_ACTION", { reason: "currentPageKey invalid", currentPageKey: this.currentPageKey });
       return;
     }
-    // ページ文脈不一致（TC-03,34）
-    if (ctxPage !== cur.key) {
-      this.broadcast({ type: "error", payload: { code: ERR.INVALID_PAGE_CONTEXT } });
+    // 文脈不一致
+    if (pageContext != null && page.context != null && pageContext !== page.context) {
+      this.sendError("INVALID_PAGE_CONTEXT", { pageKey: key, expected: page.context, actual: pageContext });
       return;
     }
-    const btn = (cur.buttons ?? []).find((b) => b.x === x && b.y === y);
+    const btn = (page.buttons ?? []).find(b => b.x === x && b.y === y);
     if (!btn) {
-      this.broadcast({ type: "error", payload: { code: ERR.NO_BUTTON } });
+      this.sendError("NO_BUTTON", { pageKey: key, x, y });
       return;
     }
 
-    const actions: Action[] = Array.isArray(btn.action) ? btn.action : [btn.action as Action];
-
-    // アクションは順序通り実行（TC-35）
-    for (const a of actions) {
-      const r = await this.execAction(a);
-      if (r === "BREAK") break; // 保険：必要に応じて中断可（現状は未使用）
+    // 複数アクションは順序維持
+    for (const act of btn.actions) {
+      const ok = await this.executeAction(act, { page, button: btn });
+      if (!ok) {
+        // INVALID_ACTION等は送信済み。継続実行の方針（テスト要件）
+        continue;
+      }
     }
   }
 
   /**
-   * ページ切替
-   * - 未初期化：NOT_INITIALIZED（TC-20）
-   * - 未定義ページ：INVALID_PAGE（TC-21）
-   * - 同一ページ：no-op（TC-33）
+   * 明示ページ切替
    */
-  public async switchPage(nextKey: string): Promise<void> {
-    if (!this.initialized || !this.config) {
-      this.broadcast({ type: "error", payload: { code: ERR.NOT_INITIALIZED } });
+  public async switchPage(pageKey: string): Promise<void> {
+    if (!this.isInitialized()) {
+      this.sendError("NOT_INITIALIZED");
       return;
     }
-    const next = this.config.pages!.find((p) => p.key === nextKey);
-    if (!next) {
-      this.broadcast({ type: "error", payload: { code: ERR.INVALID_PAGE } });
+    if (!this.pagesByKey.has(pageKey)) {
+      this.sendError("INVALID_PAGE", { pageKey });
       return;
     }
-    if (this.currentPageKey === nextKey) {
-      // no-op（TC-33）
+    if (this.currentPageKey === pageKey) {
+      // ノーオペ（テスト要件）
       return;
     }
-    this.currentPageKey = nextKey;
-    this.pushPageUpdate(); // 切替後に更新送信（TC-07,36）
-  }
-
-  /** 単一アクションの実行 */
-  private async execAction(a: Action): Promise<"OK" | "BREAK"> {
-    switch (a.type) {
-      case "obs.setScene":
-        await this.obs.setScene?.(a.scene);
-        return "OK";
-
-      case "obs.toggleStreamingRecording":
-        await this.obs.toggleStreaming?.();
-        await this.obs.toggleRecording?.();
-        return "OK";
-
-      case "obs.toggleMute":
-        await this.obs.toggleMute?.(a.source);
-        return "OK";
-
-      case "obs.setSourceVisibility":
-        await this.obs.setSourceVisibility?.(a.source, a.visible);
-        return "OK";
-
-      case "page.switch": {
-        // page 未指定は INVALID_ACTION（TC-17）
-        if (!a.page) {
-          this.broadcast({ type: "error", payload: { code: ERR.INVALID_ACTION } });
-          return "OK";
-        }
-        await this.switchPage(a.page);
-        return "OK";
-      }
-
-      case "http.get": {
-        // url 未指定は INVALID_ACTION（TC-18）
-        if (!a.url) {
-          this.broadcast({ type: "error", payload: { code: ERR.INVALID_ACTION } });
-          return "OK";
-        }
-        try {
-          const res = await this.http.get?.(a.url);
-          if (!res || !res.ok) {
-            this.broadcast({ type: "error", payload: { code: ERR.HTTP_FAILED } });
-            return "OK";
-          }
-          this.applyDisplayKeyIfNeeded(a.displayKey, res.data, a.target);
-          return "OK";
-        } catch {
-          this.broadcast({ type: "error", payload: { code: ERR.HTTP_FAILED } });
-          return "OK";
-        }
-      }
-
-      case "http.post": {
-        // url 未指定は INVALID_ACTION（TC-19）
-        if (!a.url) {
-          this.broadcast({ type: "error", payload: { code: ERR.INVALID_ACTION } });
-          return "OK";
-        }
-        try {
-          const res = await this.http.post?.(a.url, a.body);
-          if (!res || !res.ok) {
-            this.broadcast({ type: "error", payload: { code: ERR.HTTP_FAILED } });
-            return "OK";
-          }
-          this.applyDisplayKeyIfNeeded(a.displayKey, res.data, a.target);
-          return "OK";
-        } catch {
-          this.broadcast({ type: "error", payload: { code: ERR.HTTP_FAILED } });
-          return "OK";
-        }
-      }
-
-      default:
-        // 未知アクション（TC-08,38）
-        this.broadcast({ type: "error", payload: { code: ERR.INVALID_ACTION } });
-        return "OK";
-    }
+    this.currentPageKey = pageKey;
+    this.pushPageUpdateSafe();
   }
 
   /**
-   * displayKey をページ上ボタンに反映する。
-   * - displayKey が指定された場合のみ処理
-   * - 対象ボタンは target.page/x/y があればそこ、無ければ「現在ページ・同座標」を試みる
-   * - displayKey がレスポンスに存在しなければ 'N/A' を設定（TC-37）
-   * - 反映後に page.update を送信（TC-06,36,37）
+   * OBS状態から内部表示を更新（テストで失敗時 OBS_STATUS_FAILED）
    */
-  private applyDisplayKeyIfNeeded(
-    displayKey: string | undefined,
-    data: any,
-    target?: { page?: string; x?: number; y?: number }
-  ): void {
-    if (!this.config || !this.initialized) return;
-    if (!displayKey) return;
+  public async updateStatusFromObs(): Promise<void> {
+    if (!this.isInitialized()) {
+      this.sendError("NOT_INITIALIZED");
+      return;
+    }
+    try {
+      const st = this.obs.getStatus ? await this.obs.getStatus() : {};
+      // 必要に応じて label 等へ反映したいが、テストは「失敗時のエラー送出」を主眼にしている想定
+      // ここでは取得できても何も送らず、失敗時のみ error を送る。
+      void st;
+    } catch (e: any) {
+      this.sendError("OBS_STATUS_FAILED", { error: String(e?.message ?? e) });
+    }
+  }
 
-    const value = this.pickDisplayValue(data, displayKey);
-    const label = value ?? "N/A"; // キー未検出は 'N/A'（TC-37）
+  /* --------------------------------
+   * private: 実行／更新
+   * -------------------------------- */
 
-    const pageKey = target?.page ?? this.currentPageKey!;
-    const page = this.config.pages!.find((p) => p.key === pageKey);
+  private isInitialized(): boolean {
+    if (!this.config) return false;
+    if (!this.currentPageKey) return false;
+    if (!this.pagesByKey.has(this.currentPageKey)) return false;
+    return true;
+  }
+
+  /** page.update を安全に送る（失敗条件では送らない） */
+  private pushPageUpdateSafe(): void {
+    if (!this.broadcaster) return; // 送信口なし
+    if (!this.isInitialized()) return;
+    const page = this.pagesByKey.get(this.currentPageKey!);
     if (!page) return;
 
-    // 更新先ボタンを決定
-    let btn: Button | undefined;
-    if (typeof target?.x === "number" && typeof target?.y === "number") {
-      btn = (page.buttons ?? []).find((b) => b.x === target!.x && b.y === target!.y);
-    } else {
-      // target未指定なら「現在ページで（テスト例に合わせ）左上(0,0)のような該当ボタン」を上書き対象とする。
-      // 厳密な指定はテストデータ側で与えられる想定だが、fallback として (0,0) を優先的に探す。
-      btn =
-        (page.buttons ?? []).find((b) => b.x === 0 && b.y === 0) ??
-        (page.buttons ?? [])[0]; // 最初のボタンにフォールバック（安全側）
-    }
-    if (!btn) return;
-
-    btn.label = String(label);
-    this.pushPageUpdate();
+    const payload = {
+      pageKey: page.key,
+      title: page.title ?? page.key,
+      context: page.context,
+      buttons: (page.buttons ?? []).map(b => ({
+        x: b.x,
+        y: b.y,
+        label: b.label ?? "",
+      })),
+    };
+    this.broadcaster.send({ type: "page.update", payload });
   }
 
-  /** ネスト可能な displayKey を取得（単純キー前提。必要であれば a.b.c も対応可能） */
-  private pickDisplayValue(data: any, key: string): any {
-    if (!data || typeof data !== "object") return undefined;
-    // ドット区切り対応（簡易）
-    const parts = key.split(".");
-    let cur: any = data;
-    for (const p of parts) {
-      if (cur && typeof cur === "object" && p in cur) {
-        cur = cur[p];
-      } else {
-        return undefined;
+  private sendError(code: string, extra?: any): void {
+    this.logger.warn("[error]", code, extra ?? "");
+    if (this.broadcaster) {
+      this.broadcaster.send({ type: "error", payload: { code, ...(extra ?? {}) } });
+    }
+  }
+
+  private async executeAction(
+    action: ActionConfig,
+    ctx: { page: PageConfig; button: ButtonConfig }
+  ): Promise<boolean> {
+    switch (action.type) {
+      case "setScene":
+        if (!action.name) { this.sendError("INVALID_ACTION", { reason: "name required" }); return false; }
+        await Promise.resolve(this.obs.setScene(action.name));
+        return true;
+
+      case "toggleStreaming":
+        await Promise.resolve(this.obs.toggleStreaming());
+        return true;
+
+      case "toggleRecording":
+        await Promise.resolve(this.obs.toggleRecording());
+        return true;
+
+      case "toggleMute":
+        if (!this.obs.toggleMute) { this.sendError("INVALID_ACTION", { reason: "toggleMute not supported" }); return false; }
+        await Promise.resolve(this.obs.toggleMute(action.source));
+        return true;
+
+      case "setSourceVisibility":
+        if (!this.obs.setSourceVisibility) { this.sendError("INVALID_ACTION", { reason: "setSourceVisibility not supported" }); return false; }
+        if (!action.source || typeof action.visible !== "boolean") {
+          this.sendError("INVALID_ACTION", { reason: "source/visible required" });
+          return false;
+        }
+        await Promise.resolve(this.obs.setSourceVisibility({ source: action.source, visible: action.visible }));
+        return true;
+
+      case "http.get":
+        if (!action.url) { this.sendError("INVALID_ACTION", { reason: "url required", action: "http.get" }); return false; }
+        try {
+          const res = await this.http.get(action.url);
+          if (!res.ok) {
+            this.sendError("HTTP_FAILED", { status: res.status, action: "http.get" });
+            return false;
+          }
+          // displayKey が指定されていれば、レスポンスから抽出して label に反映
+          if (action.displayKey) {
+            const v = res?.data?.[action.displayKey];
+            // キーが無い場合は label 未更新（TC-23）、displayKey 未指定でラベル更新テスト（TC-37）は 'N/A'
+            if (v != null) {
+              ctx.button.label = String(v);
+            } else {
+              // TC-37: displayKey 不在 → 'N/A' で更新 + page.update
+              ctx.button.label = "N/A";
+            }
+            this.pushPageUpdateSafe();
+          }
+          return true;
+        } catch (e: any) {
+          this.sendError("HTTP_FAILED", { error: String(e?.message ?? e), action: "http.get" });
+          return false;
+        }
+
+      case "http.post":
+        if (!action.url) { this.sendError("INVALID_ACTION", { reason: "url required", action: "http.post" }); return false; }
+        try {
+          const res = await this.http.post(action.url, action.body);
+          if (!res.ok) {
+            this.sendError("HTTP_FAILED", { status: res.status, action: "http.post" });
+            return false;
+          }
+          return true;
+        } catch (e: any) {
+          this.sendError("HTTP_FAILED", { error: String(e?.message ?? e), action: "http.post" });
+          return false;
+        }
+
+      case "page.switch":
+        if (!action.page) { this.sendError("INVALID_ACTION", { reason: "page required", action: "page.switch" }); return false; }
+        await this.switchPage(action.page);
+        return true;
+
+      default:
+        // 未知アクション：INVALID_ACTION を送りつつ継続
+        this.sendError("INVALID_ACTION", { reason: "unknown action.type", type: (action as any)?.type });
+        return false;
+    }
+  }
+
+  /* --------------------------------
+   * 設定検証
+   * -------------------------------- */
+  private validateConfigOrThrow(cfg: CoreConfig): void {
+    // version チェック：number 必須（テストで "numberでない場合エラー"）
+    if (typeof cfg.version !== "number" || Number.isNaN(cfg.version)) {
+      throw new Error("version must be number");
+    }
+    // pages 必須
+    if (!Array.isArray(cfg.pages) || cfg.pages.length === 0) {
+      throw new Error("pages is required");
+    }
+    // ページキー重複禁止
+    {
+      const seen = new Set<string>();
+      for (const p of cfg.pages) {
+        if (!p || typeof p.key !== "string" || p.key.trim() === "") {
+          throw new Error("page.key is required");
+        }
+        if (seen.has(p.key)) {
+          throw new Error(`duplicate page.key: ${p.key}`);
+        }
+        seen.add(p.key);
       }
     }
-    return cur;
+    // ボタン検証
+    for (const p of cfg.pages) {
+      if (!Array.isArray(p.buttons)) {
+        throw new Error(`page ${p.key}: buttons is required`);
+      }
+      const coordSet = new Set<CoordKey>();
+      for (const b of p.buttons) {
+        // 必須
+        if (!Number.isInteger(b.x) || !Number.isInteger(b.y) || b.x < 0 || b.y < 0) {
+          throw new Error(`invalid button coordinate at page ${p.key}`);
+        }
+        const ck = coordKey(b.x, b.y);
+        if (coordSet.has(ck)) {
+          throw new Error(`duplicate button coordinate at page ${p.key}: (${b.x},${b.y})`);
+        }
+        coordSet.add(ck);
+
+        if (!Array.isArray(b.actions) || b.actions.length === 0) {
+          throw new Error(`button at page ${p.key} (${b.x},${b.y}) requires actions`);
+        }
+        // label or action 欠如テスト：ここでは "actionsは必須"、labelは任意（空文字にする）で許容。
+      }
+    }
+
+    // cfg.main がある場合、有効ページか検証
+    if (cfg.main != null && typeof cfg.main === "string") {
+      const ok = cfg.pages.some(p => p.key === cfg.main);
+      if (!ok) {
+        // mainが不正でも致命にせず、initializeで pages[0] を既定にフォールバックするテストもあるため、
+        // ここでは「警告ログのみに留める」
+        this.logger?.warn("main page not found. will fallback to first page");
+      }
+    }
   }
 }

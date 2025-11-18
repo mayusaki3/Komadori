@@ -878,7 +878,7 @@ describe("ControlCore", () => {
       pages: { main: { name: "Main", buttons: [] } },
     });
     const { obs, http, broadcast, logger, sent } = mkDeps();
-    const core = new ControlCore({ obs, http, broadcast, logger, configPath: cfgPath });
+    const core = new ControlCore({ obs, http, broadcaster, logger, configPath: cfgPath });
 
     expect(() => core.initialize()).toThrow();
     // page.update は送られない
@@ -889,7 +889,7 @@ describe("ControlCore", () => {
   it("TC-25: pages 欠如でエラー", () => {
     const cfgPath = writeJson(tmpDir, "tc25.json", { version: 1 });
     const { obs, http, broadcast, logger } = mkDeps();
-    const core = new ControlCore({ obs, http, broadcast, logger, configPath: cfgPath });
+    const core = new ControlCore({ obs, http, broadcaster, logger, configPath: cfgPath });
     expect(() => core.initialize()).toThrow();
   });
 
@@ -899,7 +899,7 @@ describe("ControlCore", () => {
       pages: { main: { name: "Main" } }, // buttons 無し
     });
     const { obs, http, broadcast, logger } = mkDeps();
-    const core = new ControlCore({ obs, http, broadcast, logger, configPath: cfgPath });
+    const core = new ControlCore({ obs, http, broadcaster, logger, configPath: cfgPath });
     expect(() => core.initialize()).toThrow();
   });
 
@@ -932,7 +932,7 @@ describe("ControlCore", () => {
       },
     });
     const { obs, http, broadcast, logger, sent } = mkDeps();
-    const core = new ControlCore({ obs, http, broadcast, logger, configPath: cfgPath });
+    const core = new ControlCore({ obs, http, broadcaster, logger, configPath: cfgPath });
     core.initialize();
 
     const update = sent.find(m => m?.type === "page.update");
@@ -945,7 +945,7 @@ describe("ControlCore", () => {
       pages: { main: { name: "Main", buttons: [] } },
     });
     const { obs, http, broadcast, logger, sent } = mkDeps();
-    const core = new ControlCore({ obs, http, broadcast, logger, configPath: cfgPath });
+    const core = new ControlCore({ obs, http, broadcaster, logger, configPath: cfgPath });
     // initialize しない
     await core.handleMessage({ type: "button.click", payload: { page: "main", x: 0, y: 0 } });
     const err = sent.find(m => m?.type === "error");
@@ -959,7 +959,7 @@ describe("ControlCore", () => {
       pages: { main: { buttons: [{ x: 0, y: 0, label: "X", action: { type: "noop" } }] } },
       currentPageKey: "not-exists",
     });
-    const core = new ControlCore({ obs, http, broadcast, logger, configPath: cfgPath });
+    const core = new ControlCore({ obs, http, broadcaster, logger, configPath: cfgPath });
     core.initialize();
 
     await core.handleMessage({ type: "button.click", payload: { page: "main", x: 0, y: 0 } });
@@ -969,7 +969,7 @@ describe("ControlCore", () => {
 
   it("TC-31: config 未設定時 pushPageUpdate は送信しない", () => {
     const { obs, http, broadcast, logger, sent } = mkDeps();
-    const core: any = new ControlCore({ obs, http, broadcast, logger, configPath: "" });
+    const core: any = new ControlCore({ obs, http, broadcaster, logger, configPath: "" });
     // initialize せず直接呼ぶ
     core.pushPageUpdate?.();
     const update = sent.find(m => m?.type === "page.update");
@@ -987,7 +987,8 @@ describe("ControlCore", () => {
       },
     });
     const { obs, http, broadcast, logger, sent } = mkDeps();
-    const core: any = new ControlCore({ obs, http, broadcast, logger, configPath: cfgPath });
+    const core: any = new ControlCore({ obs, http, broadcaster, logger, configPath: cfgPath });
+
     core.initialize();
     core.currentPageKey = "unknown";
     core.pushPageUpdate?.();
@@ -1007,7 +1008,7 @@ describe("ControlCore", () => {
 
     const { ControlCore } = await import("../src/control-core");
     const { broadcaster, obs, http, sent } = createMocks();
-    const core: any = new ControlCore({ obs, http, broadcast, logger, configPath: cfgPath });
+    const core: any = new ControlCore({ obs, http, broadcaster, logger, configPath: cfgPath });
 
     await core.initialize();
     sent.length = 0; // 初期の page.update をクリア
@@ -1031,7 +1032,7 @@ describe("ControlCore", () => {
 
     const { ControlCore } = await import("../src/control-core");
     const { broadcaster, obs, http, sent } = createMocks();
-    const core: any = new ControlCore({ obs, http, broadcast, logger, configPath: cfgPath });
+    const core: any = new ControlCore({ obs, http, broadcaster, logger, configPath: cfgPath });
 
     await core.initialize();
     sent.length = 0;
@@ -1062,7 +1063,7 @@ describe("ControlCore", () => {
 
     const { ControlCore } = await import("../src/control-core");
     const { broadcaster, obs, http, sent } = createMocks();
-    const core: any = new ControlCore({ obs, http, broadcast, logger, configPath: cfgPath });
+    const core: any = new ControlCore({ obs, http, broadcaster, logger, configPath: cfgPath });
 
     await core.initialize();
     sent.length = 0;
@@ -1091,7 +1092,7 @@ describe("ControlCore", () => {
     const { broadcaster, obs, http, sent } = createMocks();
     http.get.mockResolvedValue({ ok: true, status: 200, data: { result: "OK" } });
 
-    const core: any = new ControlCore({ obs, http, broadcast, logger, configPath: cfgPath });
+    const core: any = new ControlCore({ obs, http, broadcaster, logger, configPath: cfgPath });
     await core.initialize();
     sent.length = 0;
 
@@ -1115,7 +1116,7 @@ describe("ControlCore", () => {
     const { broadcaster, obs, http, sent } = createMocks();
     http.get.mockResolvedValue({ ok: true, status: 200, data: { result: "OK" } });
 
-    const core: any = new ControlCore({ obs, http, broadcast, logger, configPath: cfgPath });
+    const core: any = new ControlCore({ obs, http, broadcaster, logger, configPath: cfgPath });
     await core.initialize();
     sent.length = 0;
 
@@ -1141,7 +1142,7 @@ describe("ControlCore", () => {
     const { ControlCore } = await import("../src/control-core");
     const { broadcaster, obs, http, sent } = createMocks();
 
-    const core: any = new ControlCore({ obs, http, broadcast, logger, configPath: cfgPath });
+    const core: any = new ControlCore({ obs, http, broadcaster, logger, configPath: cfgPath });
     await core.initialize();
     sent.length = 0;
 
