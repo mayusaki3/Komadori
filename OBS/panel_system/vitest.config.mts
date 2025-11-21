@@ -5,7 +5,10 @@ export default defineConfig({
     root: __dirname,
     environment: "node",
     include: ["tests/**/*.spec.ts"],
-    setupFiles: ["./vitest.setup.ts"],
+    setupFiles: [
+      "./vitest.setup.ts",
+      "tests/_helpers.ts"
+    ],
     coverage: {
       provider: "v8",
       reportsDirectory: "./coverage",

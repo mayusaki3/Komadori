@@ -37,6 +37,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { createMocks, mkDeps, writeTempConfig } from "./_helpers";
+import { writeTempConfig } from "./_helpers";
 import { fileURLToPath } from "node:url";
 import * as path from "node:path";
 import * as fs from "node:fs";
@@ -69,44 +71,33 @@ function writeJsonTemp(obj: unknown): string {
 /**
  * 共通モック生成
  */
-function createMocks() {
-  const sent: any[] = [];
-
-  const broadcaster: ClientBroadcaster = {
-    broadcast: (msg) => {
-      sent.push(msg);
-    },
-  };
-
-  const obs: ObsController = {
-    setScene: vi.fn().mockResolvedValue(undefined),
-    toggleStream: vi.fn().mockResolvedValue(undefined),
-    toggleRecord: vi.fn().mockResolvedValue(undefined),
-    toggleMute: vi.fn().mockResolvedValue(undefined),
-    setSourceVisibility: vi.fn().mockResolvedValue(undefined),
-    getStatus: vi.fn().mockResolvedValue({
-      streaming: false,
-      recording: false,
+const createMocks = () => {
+  const sent: Array<{ type: string; payload: any }> = [];
+  const broadcaster = {
+    send: vi.fn((type: string, payload: any) => {
+      sent.push({ type, payload });
     }),
   };
-
-  const http: HttpClient = {
-    get: vi.fn().mockResolvedValue({ status: "OK" }),
-    post: vi.fn().mockResolvedValue({ status: "OK" }),
+  const obs = {
+    setScene: vi.fn(),
+    toggleStreaming: vi.fn(),
+    toggleRecording: vi.fn(),
+    toggleMute: vi.fn(),
+    setSourceVisibility: vi.fn(),
+    getStatus: vi.fn(),
   };
-
-  return { broadcaster, obs, http, sent };
-}
-
-/**
- * 一時 panel.json を書き出すユーティリティ
- */
-function writeTempConfig(name: string, json: unknown): string {
-  const baseDir = path.dirname(fileURLToPath(import.meta.url));
-  const filePath = path.join(baseDir, name);
-  fs.writeFileSync(filePath, JSON.stringify(json), "utf-8");
-  return filePath;
-}
+  const http = {
+    get: vi.fn(),
+    post: vi.fn(),
+  };
+  const logger = {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  };
+  return { broadcaster, obs, http, sent, logger };
+};
 
 /**
  * デフォルト panel.json のパス
@@ -234,7 +225,7 @@ describe("ControlCore", () => {
   });
 
   it("TC-05: 配信/録画トグルで各 OBS API が呼ばれる", async () => {
-    const { obs, http, sent, broadcast, logger } = mkDeps();
+    const { obs, http, sent, broadcaster, logger } = mkDeps();
 
     // 実装が呼ぶ正式名で action.type を定義
     const cfgPath = writeJsonTemp({
@@ -252,7 +243,7 @@ describe("ControlCore", () => {
 
     const core = new ControlCore({
       configPath: cfgPath,
-      broadcaster: broadcast,
+      broadcaster: broadcaster,
       obs,
       http,
     });
@@ -268,7 +259,7 @@ describe("ControlCore", () => {
   });
 
   it("TC-06: HTTP 呼び出し＋表示更新 (http.get)", async () => {
-    const { obs, http, sent, broadcast, logger } = mkDeps();
+    const { obs, http, sent, broadcaster, logger } = mkDeps();
     http.get.mockResolvedValue({ status: "OK" }); // ← 期待レスポンス
 
     const cfgPath = writeJsonTemp({
@@ -288,7 +279,7 @@ describe("ControlCore", () => {
 
     const core = new ControlCore({
       configPath: cfgPath,
-      broadcaster: broadcast,
+      broadcaster: broadcaster,
       obs,
       http,
     });
@@ -548,7 +539,7 @@ describe("ControlCore", () => {
 
     const sent: any[] = [];
     const broadcasterErr: ClientBroadcaster = {
-      broadcast: (m) => sent.push(m),
+      broadcaster: (m) => sent.push(m),
     };
 
     const core = new ControlCore({
@@ -866,10 +857,10 @@ describe("ControlCore", () => {
 
     const http = { get: vi.fn(), post: vi.fn() };
     const sent: any[] = [];
-    const broadcast = (msg: any) => { sent.push(msg); };
+    const broadcaster = (msg: any) => { sent.push(msg); };
     const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
 
-    return { obs, http, sent, broadcast, logger };
+    return { obs, http, sent, broadcaster, logger };
   };
 
   it("TC-24: version が number でない場合エラー", () => {
@@ -877,7 +868,7 @@ describe("ControlCore", () => {
       version: "1", // 不正
       pages: { main: { name: "Main", buttons: [] } },
     });
-    const { obs, http, broadcast, logger, sent } = mkDeps();
+    const { obs, http, broadcaster, logger, sent } = mkDeps();
     const core = new ControlCore({ obs, http, broadcaster, logger, configPath: cfgPath });
 
     expect(() => core.initialize()).toThrow();
@@ -888,7 +879,7 @@ describe("ControlCore", () => {
 
   it("TC-25: pages 欠如でエラー", () => {
     const cfgPath = writeJson(tmpDir, "tc25.json", { version: 1 });
-    const { obs, http, broadcast, logger } = mkDeps();
+    const { obs, http, broadcaster, logger } = mkDeps();
     const core = new ControlCore({ obs, http, broadcaster, logger, configPath: cfgPath });
     expect(() => core.initialize()).toThrow();
   });
@@ -898,7 +889,7 @@ describe("ControlCore", () => {
       version: 1,
       pages: { main: { name: "Main" } }, // buttons 無し
     });
-    const { obs, http, broadcast, logger } = mkDeps();
+    const { obs, http, broadcaster, logger } = mkDeps();
     const core = new ControlCore({ obs, http, broadcaster, logger, configPath: cfgPath });
     expect(() => core.initialize()).toThrow();
   });
@@ -916,8 +907,8 @@ describe("ControlCore", () => {
         },
       },
     });
-    const { obs, http, broadcast, logger } = mkDeps();
-    const core = new ControlCore({ obs, http, broadcast, logger, configPath: cfgPath });
+    const { obs, http, broadcaster, logger } = mkDeps();
+    const core = new ControlCore({ obs, http, broadcaster, logger, configPath: cfgPath });
     expect(() => core.initialize()).toThrow();
   });
 
@@ -931,7 +922,7 @@ describe("ControlCore", () => {
         },
       },
     });
-    const { obs, http, broadcast, logger, sent } = mkDeps();
+    const { obs, http, broadcaster, logger, sent } = mkDeps();
     const core = new ControlCore({ obs, http, broadcaster, logger, configPath: cfgPath });
     core.initialize();
 
@@ -944,7 +935,7 @@ describe("ControlCore", () => {
       version: 1,
       pages: { main: { name: "Main", buttons: [] } },
     });
-    const { obs, http, broadcast, logger, sent } = mkDeps();
+    const { obs, http, broadcaster, logger, sent } = mkDeps();
     const core = new ControlCore({ obs, http, broadcaster, logger, configPath: cfgPath });
     // initialize しない
     await core.handleMessage({ type: "button.click", payload: { page: "main", x: 0, y: 0 } });
@@ -953,7 +944,7 @@ describe("ControlCore", () => {
   });
 
   it("TC-30: currentPageKey が不正ページを指す → INVALID_ACTION", async () => {
-    const { obs, http, sent, broadcast, logger } = mkDeps();
+    const { obs, http, sent, broadcaster, logger } = mkDeps();
     const cfgPath = writeJsonTemp({
       version: 1,
       pages: { main: { buttons: [{ x: 0, y: 0, label: "X", action: { type: "noop" } }] } },
@@ -968,7 +959,7 @@ describe("ControlCore", () => {
   });
 
   it("TC-31: config 未設定時 pushPageUpdate は送信しない", () => {
-    const { obs, http, broadcast, logger, sent } = mkDeps();
+    const { obs, http, broadcaster, logger, sent } = mkDeps();
     const core: any = new ControlCore({ obs, http, broadcaster, logger, configPath: "" });
     // initialize せず直接呼ぶ
     core.pushPageUpdate?.();
@@ -986,7 +977,7 @@ describe("ControlCore", () => {
         },
       },
     });
-    const { obs, http, broadcast, logger, sent } = mkDeps();
+    const { obs, http, broadcaster, logger, sent } = mkDeps();
     const core: any = new ControlCore({ obs, http, broadcaster, logger, configPath: cfgPath });
 
     core.initialize();
@@ -1010,7 +1001,7 @@ describe("ControlCore", () => {
     const { broadcaster, obs, http, sent } = createMocks();
     const core: any = new ControlCore({ obs, http, broadcaster, logger, configPath: cfgPath });
 
-    await core.initialize();
+    core.initialize();
     sent.length = 0; // 初期の page.update をクリア
 
     // すでに main の想定。main にもう一度切替要求。
@@ -1034,7 +1025,7 @@ describe("ControlCore", () => {
     const { broadcaster, obs, http, sent } = createMocks();
     const core: any = new ControlCore({ obs, http, broadcaster, logger, configPath: cfgPath });
 
-    await core.initialize();
+    core.initialize();
     sent.length = 0;
 
     // current: main。util ページの座標をわざと送る
@@ -1065,7 +1056,7 @@ describe("ControlCore", () => {
     const { broadcaster, obs, http, sent } = createMocks();
     const core: any = new ControlCore({ obs, http, broadcaster, logger, configPath: cfgPath });
 
-    await core.initialize();
+    core.initialize();
     sent.length = 0;
 
     await core.handleMessage({ type: "button.click", payload: { page: "main", x: 0, y: 0 } });
@@ -1093,7 +1084,7 @@ describe("ControlCore", () => {
     http.get.mockResolvedValue({ ok: true, status: 200, data: { result: "OK" } });
 
     const core: any = new ControlCore({ obs, http, broadcaster, logger, configPath: cfgPath });
-    await core.initialize();
+    core.initialize();
     sent.length = 0;
 
     await core.handleMessage({ type: "button.click", payload: { page: "main", x: 0, y: 0 } });
@@ -1117,7 +1108,7 @@ describe("ControlCore", () => {
     http.get.mockResolvedValue({ ok: true, status: 200, data: { result: "OK" } });
 
     const core: any = new ControlCore({ obs, http, broadcaster, logger, configPath: cfgPath });
-    await core.initialize();
+    core.initialize();
     sent.length = 0;
 
     await core.handleMessage({ type: "button.click", payload: { page: "main", x: 0, y: 0 } });
@@ -1143,7 +1134,7 @@ describe("ControlCore", () => {
     const { broadcaster, obs, http, sent } = createMocks();
 
     const core: any = new ControlCore({ obs, http, broadcaster, logger, configPath: cfgPath });
-    await core.initialize();
+    core.initialize();
     sent.length = 0;
 
     await core.handleMessage({ type: "button.click", payload: { page: "main", x: 0, y: 0 } });
