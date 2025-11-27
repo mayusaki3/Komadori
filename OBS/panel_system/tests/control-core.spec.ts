@@ -37,8 +37,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { createMocks, mkDeps, writeTempConfig } from "./_helpers";
-import { writeTempConfig } from "./_helpers";
+import { createMocks, writeTempConfig, createLoggerMock } from "./_helpers";
 import { fileURLToPath } from "node:url";
 import * as path from "node:path";
 import * as fs from "node:fs";
@@ -50,6 +49,9 @@ import {
   HttpClient,
   ButtonClickMessage,
 } from "../src/control-core";
+
+// 一部ケースで new ControlCore({ ..., logger, ... }) として参照されるがテスト内で未定義だったため補う
+const logger: any = { debug(){}, info(){}, warn(){}, error(){} };
 
 // --- test helpers ---
 import { tmpdir } from "os";
@@ -123,16 +125,17 @@ describe("ControlCore", () => {
     fs.mkdirSync(tmpDir, { recursive: true });
   });
 
+  // 以降のテストで logger を都度生成して渡すユーティリティ
+  function newLogger() {
+    const logger = createLoggerMock();
+    return logger;
+  }
+  
   it("TC-01: 正常ロードで page.update を送信する", () => {
     const { broadcaster, obs, http, sent } = createMocks();
 
-    const core = new ControlCore({
-      configPath: defaultConfigPath,
-      broadcaster,
-      obs,
-      http,
-    });
-
+    const logger = newLogger();
+    const core: any = new ControlCore({ obs, http, broadcaster, logger, configPath: defaultConfigPath });
     core.initialize();
 
     const update = sent.find((m) => m.type === "page.update");
@@ -156,13 +159,8 @@ describe("ControlCore", () => {
       },
     });
 
-    const core = new ControlCore({
-      configPath: dupConfigPath,
-      broadcaster,
-      obs,
-      http,
-    });
-
+    const logger = newLogger();
+    const core: any = new ControlCore({ obs, http, broadcaster, logger, configPath: dupConfigPath });
     expect(() => core.initialize()).toThrow();
 
     const update = sent.find((m) => m.type === "page.update");
