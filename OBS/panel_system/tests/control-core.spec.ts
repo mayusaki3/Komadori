@@ -1141,5 +1141,502 @@ describe("ControlCore", () => {
     expect(err?.code || err?.payload?.code).toBe("INVALID_ACTION");
     expect(obs.toggleMute).toHaveBeenCalledTimes(1);
   });
-  
+
+  it("TC-39: config オブジェクト直渡しでも initialize できる", () => {
+    const sent: any[] = [];
+    const broadcaster = {
+      send: (type: string, payload: any) => {
+        sent.push({ type, payload });
+      },
+    };
+
+    const core = new ControlCore({
+      obs: {},
+      http: {},
+      broadcaster,
+      config: {
+        version: 1,
+        pages: {
+          main: {
+            buttons: [
+              { x: 0, y: 0, label: "A", action: { type: "noop" } },
+            ],
+          },
+        },
+      },
+    });
+
+    core.initialize();
+
+    const update = sent.find((m) => m.type === "page.update");
+    expect(update?.payload?.currentPage).toBe("main");
+  });
+
+  it("TC-40: configPath も config も無い場合 initialize は例外を投げる", () => {
+    const core = new ControlCore({
+      obs: {},
+      http: {},
+      // broadcaster は何でもよい
+      broadcaster: { send: () => {} },
+      // configPath も config も指定しない
+    } as any);
+
+    expect(() => core.initialize()).toThrow("configPath is not set");
+  });
+
+  it("TC-41: updateStatusFromObs 成功時に page.update を送る", async () => {
+    const sent: any[] = [];
+    const broadcaster = {
+      send: (type: string, payload: any) => {
+        sent.push({ type, payload });
+      },
+    };
+    const obs = {
+      getStatus: vi.fn().mockResolvedValue({ ok: true }),
+    };
+
+    const core = new ControlCore({
+      obs,
+      http: {},
+      broadcaster,
+      config: {
+        version: 1,
+        pages: {
+          main: {
+            buttons: [
+              { x: 0, y: 0, label: "A", action: { type: "noop" } },
+            ],
+          },
+        },
+      },
+    });
+
+    core.initialize();
+    // 初期 page.update を無視するためクリア
+    sent.length = 0;
+
+    await core.updateStatusFromObs();
+
+    expect(obs.getStatus).toHaveBeenCalledTimes(1);
+    const update = sent.find((m) => m.type === "page.update");
+    expect(update).toBeTruthy();
+  });
+
+  it("TC-42: getStatus 未実装なら OBS_STATUS_FAILED エラーを送る", async () => {
+    const sent: any[] = [];
+    const broadcaster = (msg: any) => {
+      sent.push(msg);
+    };
+
+    const core = new ControlCore({
+      obs: {}, // getStatus なし
+      http: {},
+      broadcaster,
+      config: {
+        version: 1,
+        pages: {
+          main: {
+            buttons: [
+              { x: 0, y: 0, label: "A", action: { type: "noop" } },
+            ],
+          },
+        },
+      },
+    });
+
+    core.initialize();
+    sent.length = 0;
+
+    await core.updateStatusFromObs();
+
+    const err = sent.find((m) => m.type === "error");
+    expect(err?.payload?.code).toBe("OBS_STATUS_FAILED");
+  });
+
+  it("TC-43: 未知メッセージ種別は INVALID_ACTION エラーを返す", async () => {
+    const sent: any[] = [];
+    const broadcaster = (msg: any) => {
+      sent.push(msg);
+    };
+
+    const core = new ControlCore({
+      obs: {},
+      http: {},
+      broadcaster,
+      config: {
+        version: 1,
+        pages: {
+          main: {
+            buttons: [
+              { x: 0, y: 0, label: "A", action: { type: "noop" } },
+            ],
+          },
+        },
+      },
+    });
+
+    core.initialize();
+    sent.length = 0;
+
+    await core.handleMessage({ type: "unknown.type", payload: {} });
+
+    const err = sent.find((m) => m.type === "error");
+    expect(err?.payload?.code).toBe("INVALID_ACTION");
+  });
+
+  it("TC-44: HTTP アクションで displayKey 未指定なら label を変更しない", async () => {
+    const sent: any[] = [];
+    const broadcaster = {
+      send: (type: string, payload: any) => {
+        sent.push({ type, payload });
+      },
+    };
+    const http = {
+      get: vi.fn().mockResolvedValue({ data: { value: "NEW" } }),
+    };
+
+    const core = new ControlCore({
+      obs: {},
+      http,
+      broadcaster,
+      config: {
+        version: 1,
+        pages: {
+          main: {
+            buttons: [
+              {
+                x: 0,
+                y: 0,
+                label: "OLD",
+                action: {
+                  type: "http.get",
+                  url: "https://example.test",
+                  // displayKey はあえて指定しない
+                },
+              },
+            ],
+          },
+        },
+      },
+    });
+
+    core.initialize();
+    sent.length = 0;
+
+    await core.handleMessage({
+      type: "button.click",
+      payload: { page: "main", x: 0, y: 0 },
+    });
+
+    expect(http.get).toHaveBeenCalledTimes(1);
+    const update = sent.find((m) => m.type === "page.update");
+    expect(update?.payload?.buttons[0]?.label).toBe("OLD");
+  });
+
+  it("TC-45: broadcaster が例外を投げても emit は logger.error を呼び出して落ちない", () => {
+    const logger = {
+      error: vi.fn(),
+    };
+
+    const broadcaster = () => {
+      throw new Error("emit boom");
+    };
+
+    const core = new ControlCore({
+      obs: {},
+      http: {},
+      broadcaster,
+      logger,
+      config: {
+        version: 1,
+        pages: {
+          main: {
+            buttons: [
+              { x: 0, y: 0, label: "A", action: { type: "noop" } },
+            ],
+          },
+        },
+      },
+    });
+
+    core.initialize();
+
+    // emit 内で例外が出ても外側には飛ばさない
+    expect(() => core.pushPageUpdate()).not.toThrow();
+    expect(logger.error).toHaveBeenCalled();
+  });
+
+  it("TC-46: http アクションで url 未指定の場合 INVALID_ACTION (execHttpAndReflectLabel)", async () => {
+    const sent: any[] = [];
+    const broadcaster = (msg: any) => sent.push(msg);
+    const http = {
+      get: vi.fn(), // 呼ばれない想定
+    };
+
+    const core = new ControlCore({
+      obs: {},
+      http,
+      broadcaster,
+      config: {
+        version: 1,
+        pages: {
+          main: {
+            buttons: [
+              {
+                x: 0,
+                y: 0,
+                label: "A",
+                action: {
+                  type: "http.get",
+                  // url をわざと指定しない
+                },
+              },
+            ],
+          },
+        },
+      },
+    });
+
+    core.initialize();
+    sent.length = 0;
+
+    await core.handleMessage({
+      type: "button.click",
+      payload: { page: "main", x: 0, y: 0 },
+    });
+
+    const err = sent.find((m) => m.type === "error");
+    expect(err?.payload?.code).toBe("INVALID_ACTION");
+    expect(http.get).not.toHaveBeenCalled();
+  });
+
+  it("TC-47: ボタン経由 http.get で HTTP_FAILED が発生する (execHttpAndReflectLabel)", async () => {
+    const sent: any[] = [];
+    const broadcaster = (msg: any) => sent.push(msg);
+    const http = {
+      get: vi.fn().mockRejectedValue(new Error("network down")),
+    };
+
+    const core = new ControlCore({
+      obs: {},
+      http,
+      broadcaster,
+      config: {
+        version: 1,
+        pages: {
+          main: {
+            buttons: [
+              {
+                x: 1,
+                y: 1,
+                label: "A",
+                action: {
+                  type: "http.get",
+                  url: "https://example.test/err",
+                  displayKey: "value",
+                },
+              },
+            ],
+          },
+        },
+      },
+    });
+
+    core.initialize();
+    sent.length = 0;
+
+    await core.handleMessage({
+      type: "button.click",
+      payload: { page: "main", x: 1, y: 1 },
+    });
+
+    const err = sent.find((m) => m.type === "error");
+    expect(err?.payload?.code).toBe("HTTP_FAILED");
+  });
+
+  it("TC-48: execHttpAndReflectLabel で res 本体の displayKey を参照する", async () => {
+    const sent: any[] = [];
+    const broadcaster = (msg: any) => sent.push(msg);
+    const http = {
+      get: vi.fn().mockResolvedValue({ value: "RES_VALUE" }), // res.data ではなく res.value
+    };
+
+    const core = new ControlCore({
+      obs: {},
+      http,
+      broadcaster,
+      config: {
+        version: 1,
+        pages: {
+          main: {
+            buttons: [
+              {
+                x: 2,
+                y: 2,
+                label: "OLD",
+                action: {
+                  type: "http.get",
+                  url: "https://example.test/value",
+                  displayKey: "value",
+                },
+              },
+            ],
+          },
+        },
+      },
+    });
+
+    core.initialize();
+    sent.length = 0;
+
+    await core.handleMessage({
+      type: "button.click",
+      payload: { page: "main", x: 2, y: 2 },
+    });
+
+    const update = sent.find((m) => m.type === "page.update");
+    const btn = update?.payload?.buttons.find(
+      (b: any) => b.x === 2 && b.y === 2,
+    );
+    expect(btn?.label).toBe("RES_VALUE");
+  });
+
+  it("TC-49: メッセージ経由 http.get 成功時は HTTP_FAILED を送らない", async () => {
+    const sent: any[] = [];
+    const broadcaster = (msg: any) => sent.push(msg);
+    const http = {
+      get: vi.fn().mockResolvedValue({ ok: true }),
+    };
+
+    const core = new ControlCore({
+      obs: {},
+      http,
+      broadcaster,
+      config: {
+        version: 1,
+        pages: {
+          main: {
+            buttons: [
+              { x: 0, y: 0, label: "A", action: { type: "noop" } },
+            ],
+          },
+        },
+      },
+    });
+
+    core.initialize();
+    sent.length = 0;
+
+    await core.handleMessage({
+      type: "http.get",
+      payload: { url: "https://example.test/ok" },
+    });
+
+    const err = sent.find((m) => m.type === "error" && m.payload?.code === "HTTP_FAILED");
+    expect(err).toBeUndefined();
+    expect(http.get).toHaveBeenCalledTimes(1);
+  });
+
+  it("TC-50: メッセージ経由 http.post エラー時に HTTP_FAILED を送る", async () => {
+    const sent: any[] = [];
+    const broadcaster = (msg: any) => sent.push(msg);
+    const http = {
+      post: vi.fn().mockRejectedValue(new Error("post failed")),
+    };
+
+    const core = new ControlCore({
+      obs: {},
+      http,
+      broadcaster,
+      config: {
+        version: 1,
+        pages: {
+          main: {
+            buttons: [
+              { x: 0, y: 0, label: "A", action: { type: "noop" } },
+            ],
+          },
+        },
+      },
+    });
+
+    core.initialize();
+    sent.length = 0;
+
+    await core.handleMessage({
+      type: "http.post",
+      payload: { url: "https://example.test/post", body: { a: 1 } },
+    });
+
+    const err = sent.find((m) => m.type === "error");
+    expect(err?.payload?.code).toBe("HTTP_FAILED");
+  });
+
+  it("TC-51: emit で send/broadcaster/関数いずれでもない場合は何もせず落ちない", () => {
+    const broadcaster = { foo: 1 }; // send/broadcaster を持たない形
+
+    const core = new ControlCore({
+      obs: {},
+      http: {},
+      broadcaster,
+      config: {
+        version: 1,
+        pages: {
+          main: {
+            buttons: [
+              { x: 0, y: 0, label: "A", action: { type: "noop" } },
+            ],
+          },
+        },
+      },
+    });
+
+    // initialize() 内で pushPageUpdate が呼ばれて emit が走る
+    expect(() => core.initialize()).not.toThrow();
+    // 送信先が無いので、特にアサートは不要（落ちないことだけ確認）
+  });
+
+  it("TC-52: handleMessage 内での例外は UNEXPECTED_ERROR にラップされる", async () => {
+    const sent: any[] = [];
+    const broadcaster = (msg: any) => sent.push(msg);
+
+    const obs = {
+      setScene: vi.fn().mockImplementation(() => {
+        throw new Error("setScene boom");
+      }),
+    };
+
+    const core = new ControlCore({
+      obs,
+      http: {},
+      broadcaster,
+      config: {
+        version: 1,
+        pages: {
+          main: {
+            buttons: [
+              {
+                x: 0,
+                y: 0,
+                label: "Scene",
+                action: { type: "setScene", scene: "S1" },
+              },
+            ],
+          },
+        },
+      },
+    });
+
+    core.initialize();
+    sent.length = 0;
+
+    await core.handleMessage({
+      type: "button.click",
+      payload: { page: "main", x: 0, y: 0 },
+    });
+
+    const err = sent.find((m) => m.type === "error");
+    expect(err?.payload?.code).toBe("UNEXPECTED_ERROR");
+  });
+
 });
