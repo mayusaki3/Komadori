@@ -43,11 +43,11 @@ import * as path from "node:path";
 import * as fs from "node:fs";
 import {
   ControlCore,
-  ControlCoreOptions,
   ClientBroadcaster,
   ObsController,
   HttpClient,
   ButtonClickMessage,
+  PanelConfig,
 } from "../src/control-core";
 
 // 一部ケースで new ControlCore({ ..., logger, ... }) として参照されるがテスト内で未定義だったため補う
@@ -1637,6 +1637,617 @@ describe("ControlCore", () => {
 
     const err = sent.find((m) => m.type === "error");
     expect(err?.payload?.code).toBe("UNEXPECTED_ERROR");
+  });
+
+  it("TC-53: config 内ボタン座標型不正でエラーになる", () => {
+    // x が number ではないケースで validateAndNormalizeConfig の
+    // 「invalid button coordinates」ブランチを踏ませる
+    const badConfig: PanelConfig = {
+      version: 1,
+      pages: {
+        main: {
+          buttons: [
+            {
+              x: "0" as any, // 不正型
+              y: 0,
+              label: "NG",
+              action: { type: "noop" },
+            },
+          ],
+        },
+      },
+    };
+
+    const core = new ControlCore({
+      obs: {} as any,
+      http: {} as any,
+      broadcaster: () => {},
+      config: badConfig,
+    });
+
+    expect(() => core.initialize()).toThrowError(
+      /page main has invalid button coordinates/,
+    );
+  });
+
+  it("TC-54: page オブジェクト自体が falsy な場合はエラーになる", () => {
+    // pages: { main: undefined } で「page main is invalid」ブランチを踏ませる
+    const badConfig: PanelConfig = {
+      version: 1,
+      pages: {
+        main: undefined as any,
+      },
+    };
+
+    const core = new ControlCore({
+      obs: {} as any,
+      http: {} as any,
+      broadcaster: () => {},
+      config: badConfig,
+    });
+
+    expect(() => core.initialize()).toThrowError(/page main is invalid/);
+  });
+
+  it("TC-55: execHttpAndReflectLabel で currentPageKey 未設定なら label は更新されない", async () => {
+    const get = vi.fn().mockResolvedValue({
+      data: { value: "OK" },
+    });
+
+    const core = new ControlCore({
+      obs: {} as any,
+      http: { get } as any,
+      broadcaster: () => {},
+    });
+
+    // initialized だが currentPageKey は意図的に undefined
+    (core as any).initialized = true;
+    (core as any).currentPageKey = undefined;
+
+    const anyCore = core as any;
+    await anyCore.execHttpAndReflectLabel(
+      "get",
+      { url: "http://example.test", displayKey: "value" },
+      1,
+      2,
+    );
+
+    const displayValues: Map<string, Map<string, string>> =
+      (core as any).displayValues;
+    expect(displayValues.size).toBe(0);
+    expect(get).toHaveBeenCalledTimes(1);
+  });
+
+  it("TC-56: execHttpAndReflectLabel は data 側の displayKey を優先してラベル更新する", async () => {
+    const get = vi.fn().mockResolvedValue({
+      data: { value: "DATA" },
+      value: "ROOT",
+    });
+
+    const config: PanelConfig = {
+      version: 1,
+      pages: {
+        main: {
+          buttons: [
+            {
+              x: 1,
+              y: 2,
+              label: "before",
+              action: {
+                type: "http.get",
+                url: "http://example.test",
+                displayKey: "value",
+              },
+            },
+          ],
+        },
+      },
+    };
+
+    const core = new ControlCore({
+      obs: {} as any,
+      http: { get } as any,
+      broadcaster: () => {},
+      config,
+    });
+
+    core.initialize();
+    (core as any).currentPageKey = "main";
+
+    const anyCore = core as any;
+    await anyCore.execHttpAndReflectLabel(
+      "get",
+      { url: "http://example.test", displayKey: "value" },
+      1,
+      2,
+    );
+
+    const displayValues: Map<string, Map<string, string>> =
+      (core as any).displayValues;
+    const mainMap = displayValues.get("main");
+    expect(mainMap).toBeDefined();
+    expect(mainMap?.get("1,2")).toBe("DATA"); // data.value が優先される
+
+    expect(get).toHaveBeenCalledTimes(1);
+  });
+
+  it("TC-57: toggleStreaming 未実装で toggleStream が呼ばれる", async () => {
+    const obs: ObsController = {
+      // toggleStreaming は未定義
+      toggleStream: vi.fn(),
+    };
+
+    const http: HttpClient = {};
+    const send = vi.fn();
+
+    const core = new ControlCore({
+      obs,
+      http,
+      broadcaster: { send },
+      config: {
+        version: 1,
+        pages: {
+          main: {
+            buttons: [
+              {
+                x: 0,
+                y: 0,
+                label: "stream-toggle",
+                action: { type: "obs.toggleStreaming" },
+              },
+            ],
+          },
+        },
+      },
+    });
+
+    core.initialize();
+
+    await core.handleMessage({
+      type: "button.click",
+      payload: { page: "main", x: 0, y: 0 },
+    });
+
+    expect(obs.toggleStream).toHaveBeenCalledTimes(1);
+  });
+
+  it("TC-58: toggleRecording 未実装で toggleRecord が呼ばれる", async () => {
+    const obs: ObsController = {
+      // toggleRecording は未定義
+      toggleRecord: vi.fn(),
+    };
+
+    const http: HttpClient = {};
+    const send = vi.fn();
+
+    const core = new ControlCore({
+      obs,
+      http,
+      broadcaster: { send },
+      config: {
+        version: 1,
+        pages: {
+          main: {
+            buttons: [
+              {
+                x: 0,
+                y: 0,
+                label: "record-toggle",
+                action: { type: "obs.toggleRecording" },
+              },
+            ],
+          },
+        },
+      },
+    });
+
+    core.initialize();
+
+    await core.handleMessage({
+      type: "button.click",
+      payload: { page: "main", x: 0, y: 0 },
+    });
+
+    expect(obs.toggleRecord).toHaveBeenCalledTimes(1);
+  });
+
+  it("TC-59: currentPage 指定で currentPageKey が上書きされる", () => {
+    const obs: ObsController = {};
+    const http: HttpClient = {};
+    const send = vi.fn();
+
+    const core = new ControlCore({
+      obs,
+      http,
+      broadcaster: { send },
+      config: {
+        version: 1,
+        // main も util も存在する構成
+        pages: {
+          main: {
+            buttons: [
+              { x: 0, y: 0, label: "main", action: { type: "noop" } },
+            ],
+          },
+          util: {
+            buttons: [
+              { x: 1, y: 1, label: "util", action: { type: "noop" } },
+            ],
+          },
+        },
+        // currentPageKey ではなく currentPage を指定する
+        currentPage: "util",
+      },
+    });
+
+    core.initialize();
+
+    // initialize 時に currentPageKey が currentPage で上書きされるパス
+    expect(core.currentPageKey).toBe("util");
+
+    // ついでに初回 page.update も util ページで送られていることを確認
+    expect(send).toHaveBeenCalled();
+    const payload = send.mock.calls[0][1];
+    expect(payload.currentPage).toBe("util");
+  });
+
+  it("TC-60: config 未設定時 getPage は undefined を返す (早期 return パス)", () => {
+    const obs: ObsController = {};
+    const http: HttpClient = {};
+    const send = vi.fn();
+
+    const core = new ControlCore({
+      obs,
+      http,
+      broadcaster: { send },
+      // config / configPath ともに指定しない
+    });
+
+    // private メソッドだが any 経由で直接呼び出して早期 return パスを踏む
+    const page = (core as any).getPage("main");
+    expect(page).toBeUndefined();
+  });
+
+  it("TC-61: handleButtonClick は handleMessage 経由で button.click を処理する", async () => {
+    const sent: any[] = [];
+
+    const config: PanelConfig = {
+      version: 1,
+      pages: {
+        main: {
+          buttons: [
+            {
+              x: 0,
+              y: 0,
+              label: "SCENE",
+              action: { type: "obs.setScene", scene: "SceneA" },
+            },
+          ],
+        },
+      },
+    };
+
+    const obs = {
+      setScene: vi.fn(),
+    };
+
+    const core = new ControlCore({
+      obs,
+      http: {},
+      broadcaster: (msg: any) => sent.push(msg),
+      logger: {},
+      config,
+    });
+
+    core.initialize();
+    sent.length = 0; // 初期 page.update をクリア（ある場合のみ）
+
+    const msg: ButtonClickMessage = {
+      type: "button.click",
+      payload: { page: "main", x: 0, y: 0 },
+    };
+
+    await core.handleButtonClick(msg);
+
+    // handleButtonClick → handleMessage → onButtonClick 経由で呼ばれること
+    expect(obs.setScene).toHaveBeenCalledWith("SceneA");
+
+    // click により必ず 1 回は page.update が送られる
+    const pageUpdates = sent.filter((m) => m.type === "page.update");
+    expect(pageUpdates.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("TC-62: getPage は key 未指定なら undefined を返す", () => {
+    const config: PanelConfig = {
+      version: 1,
+      pages: {
+        main: {
+          buttons: [],
+        },
+      },
+    };
+
+    const core = new ControlCore({
+      obs: {},
+      http: {},
+      broadcaster: () => {},
+      logger: {},
+      config,
+    });
+
+    // initialize() 不要。private メソッドを as any で直接呼ぶ
+    const page = (core as any).getPage(undefined);
+    expect(page).toBeUndefined();
+  });
+
+  it("TC-63: getPage は pages 未定義なら undefined を返す", () => {
+    const config = {
+      version: 1,
+      // pages をあえて省略
+    } as any as PanelConfig;
+
+    const core = new ControlCore({
+      obs: {},
+      http: {},
+      broadcaster: () => {},
+      logger: {},
+      config,
+    });
+
+    const page = (core as any).getPage("main");
+    expect(page).toBeUndefined();
+  });
+
+  it("TC-64: メッセージ経由 http.post 成功時は HTTP_FAILED エラーを送らない", async () => {
+    const errors: any[] = [];
+
+    const http = {
+      post: vi.fn().mockResolvedValue({ ok: true }),
+    };
+
+    const core = new ControlCore({
+      obs: {},
+      http,
+      broadcaster: (msg: any) => {
+        if (msg.type === "error") {
+          errors.push(msg);
+        }
+      },
+      logger: {},
+    });
+
+    await core.handleMessage({
+      type: "http.post",
+      payload: { url: "http://example.local/api", body: { foo: "bar" } },
+    });
+
+    expect(http.post).toHaveBeenCalledTimes(1);
+    expect(http.post).toHaveBeenCalledWith(
+      "http://example.local/api",
+      { foo: "bar" },
+    );
+
+    // HTTP_FAILED が飛んでいないこと
+    const httpFailed = errors.find(
+      (e) => e.payload?.code === "HTTP_FAILED",
+    );
+    expect(httpFailed).toBeUndefined();
+  }); 
+
+  it("TC-65: pages が空オブジェクトの場合 getPage は undefined を返す", () => {
+    const core = new ControlCore({
+      config: { version: 1, pages: {} },
+      obs: {},
+      http: {},
+      broadcaster: () => {},
+    });
+
+    expect(core.getPage("main")).toBeUndefined();
+  });
+
+  it("TC-66: buttons 未定義ページでは getButton は undefined を返す", () => {
+    const config: PanelConfig = {
+      version: 1,
+      pages: {
+        main: {
+          // buttons をあえて未定義/省略にする
+          // buttons: undefined as any,
+        } as any,
+      },
+    };
+
+    const core = new ControlCore({
+      obs: {} as any,
+      http: {} as any,
+      broadcaster: () => {},
+      config,
+    });
+
+    // ★ 修正ポイント
+    const btn = (core as any).getButton("main", 0, 0);
+    expect(btn).toBeUndefined();
+  });
+
+  it("TC-67: emit は logger 未定義でも安全に失敗せず動作する", () => {
+    const core = new ControlCore({
+      config: { version: 1, pages: {} },
+      obs: {},
+      http: {},
+      broadcaster: {}, // send/broadcaster/func どれでもない
+      logger: undefined,
+    });
+
+    expect(() => core.emit({ type: "test" })).not.toThrow();
+  });
+
+  it("TC-68: obs.getStatus が undefined を返した場合 OBS_STATUS_FAILED を送る", async () => {
+    const sent: any[] = [];
+
+    const core = new ControlCore({
+      obs: {
+        getStatus: vi.fn().mockResolvedValue(undefined),
+      } as any,
+      http: {} as any,
+      broadcaster: (msg: any) => sent.push(msg),
+      config: {
+        version: 1,
+        pages: {
+          main: {
+            buttons: [
+              { x: 0, y: 0, label: "A", action: { type: "noop" } },
+            ],
+          },
+        },
+      },
+    });
+
+    core.initialize();
+    sent.length = 0;
+
+    await core.updateStatusFromObs();
+
+    // ★ 修正ポイント
+    const msg = sent.find(
+      (m) => m.type === "error" && (m.payload?.code === "OBS_STATUS_FAILED" || m.code === "OBS_STATUS_FAILED"),
+    );
+    expect(msg).not.toBeUndefined();
+  });
+
+  it("TC-69: execHttpAndReflectLabel は data が undefined の場合 label を更新しない", async () => {
+    const sent: any[] = [];
+    const http = {
+      // res.data が undefined になるケース
+      get: vi.fn().mockResolvedValue({ data: undefined }),
+    };
+
+    const config: PanelConfig = {
+      version: 1,
+      pages: {
+        main: {
+          buttons: [
+            {
+              x: 0,
+              y: 0,
+              label: "A",
+              action: {
+                type: "http.get",
+                url: "http://example.test",
+                displayKey: "value",
+              },
+            },
+          ],
+        },
+      },
+    };
+
+    const core = new ControlCore({
+      obs: {} as any,
+      http: http as any,
+      broadcaster: (msg: any) => sent.push(msg),
+      config,
+    });
+
+    core.initialize();
+    (core as any).currentPageKey = "main";
+    sent.length = 0;
+
+    await (core as any).execHttpAndReflectLabel(
+      "get",
+      { url: "http://example.test", displayKey: "value" },
+      0,
+      0,
+    );
+
+    // page.update が飛んでいれば label が変わっていないことを確認
+    const update = sent.find((m) => m.type === "page.update");
+    if (update) {
+      expect(update.payload.buttons[0].label).toBe("A");
+    }
+
+    // ★ さらに厳密にするなら displayValues も確認
+    const displayValues: Map<string, Map<string, string>> =
+      (core as any).displayValues;
+    const mainMap = displayValues.get("main");
+    // 「0,0」の display 値が登録されていない = ラベル更新されていない
+    expect(mainMap?.has("0,0")).not.toBe(true);
+  });
+
+  it("TC-70: execHttpAndReflectLabel は res が undefined の場合 label を更新しない", async () => {
+    const sent: any[] = [];
+    const http = {
+      // res 自体が undefined
+      get: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const config: PanelConfig = {
+      version: 1,
+      pages: {
+        main: {
+          buttons: [
+            {
+              x: 0,
+              y: 0,
+              label: "A",
+              action: {
+                type: "http.get",
+                url: "http://example.test",
+                displayKey: "value",
+              },
+            },
+          ],
+        },
+      },
+    };
+
+    const core = new ControlCore({
+      obs: {} as any,
+      http: http as any,
+      broadcaster: (msg: any) => sent.push(msg),
+      config,
+    });
+
+    core.initialize();
+    (core as any).currentPageKey = "main";
+    sent.length = 0;
+
+    await (core as any).execHttpAndReflectLabel(
+      "get",
+      { url: "http://example.test", displayKey: "value" },
+      0,
+      0,
+    );
+
+    const update = sent.find((m) => m.type === "page.update");
+    if (update) {
+      expect(update.payload.buttons[0].label).toBe("A");
+    }
+
+    const displayValues: Map<string, Map<string, string>> =
+      (core as any).displayValues;
+    const mainMap = displayValues.get("main");
+    expect(mainMap?.has("0,0")).not.toBe(true);
+  });
+
+  it("TC-71: http エラーでも displayKey 未指定なら HTTP_FAILED を送らない", async () => {
+    const sent: any[] = [];
+
+    const core = new ControlCore({
+      config: {
+        version: 1,
+        pages: { main: { buttons: [{ x: 0, y: 0, label: "A", action: { type: "http.get", url: "x" } }] } },
+      },
+      obs: {},
+      http: { get: async () => { throw new Error("fail"); } },
+      broadcaster: (m) => sent.push(m),
+    });
+
+    await core.initialize();
+    core.currentPageKey = "main";
+
+    await core.execHttpAndReflectLabel("main", 0, 0, { type: "http.get", url: "x" });
+
+    const err = sent.find((m) => m.type === "error" && m.code === "HTTP_FAILED");
+    expect(err).toBeUndefined(); // displayKey がないので error を送らない
   });
 
 });
