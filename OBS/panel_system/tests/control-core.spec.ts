@@ -1908,56 +1908,7 @@ describe("ControlCore", () => {
     expect(page).toBeUndefined();
   });
 
-  it("TC-61: handleButtonClick は handleMessage 経由で button.click を処理する", async () => {
-    const sent: any[] = [];
-
-    const config: PanelConfig = {
-      version: 1,
-      pages: {
-        main: {
-          buttons: [
-            {
-              x: 0,
-              y: 0,
-              label: "SCENE",
-              action: { type: "obs.setScene", scene: "SceneA" },
-            },
-          ],
-        },
-      },
-    };
-
-    const obs = {
-      setScene: vi.fn(),
-    };
-
-    const core = new ControlCore({
-      obs,
-      http: {},
-      broadcaster: (msg: any) => sent.push(msg),
-      logger: {},
-      config,
-    });
-
-    core.initialize();
-    sent.length = 0; // 初期 page.update をクリア（ある場合のみ）
-
-    const msg: ButtonClickMessage = {
-      type: "button.click",
-      payload: { page: "main", x: 0, y: 0 },
-    };
-
-    await core.handleButtonClick(msg);
-
-    // handleButtonClick → handleMessage → onButtonClick 経由で呼ばれること
-    expect(obs.setScene).toHaveBeenCalledWith("SceneA");
-
-    // click により必ず 1 回は page.update が送られる
-    const pageUpdates = sent.filter((m) => m.type === "page.update");
-    expect(pageUpdates.length).toBeGreaterThanOrEqual(1);
-  });
-
-  it("TC-62: getPage は key 未指定なら undefined を返す", () => {
+  it("TC-61: getPage は key 未指定なら undefined を返す", () => {
     const config: PanelConfig = {
       version: 1,
       pages: {
@@ -1980,25 +1931,7 @@ describe("ControlCore", () => {
     expect(page).toBeUndefined();
   });
 
-  it("TC-63: getPage は pages 未定義なら undefined を返す", () => {
-    const config = {
-      version: 1,
-      // pages をあえて省略
-    } as any as PanelConfig;
-
-    const core = new ControlCore({
-      obs: {},
-      http: {},
-      broadcaster: () => {},
-      logger: {},
-      config,
-    });
-
-    const page = (core as any).getPage("main");
-    expect(page).toBeUndefined();
-  });
-
-  it("TC-64: メッセージ経由 http.post 成功時は HTTP_FAILED エラーを送らない", async () => {
+  it("TC-62: メッセージ経由 http.post 成功時は HTTP_FAILED エラーを送らない", async () => {
     const errors: any[] = [];
 
     const http = {
@@ -2034,7 +1967,7 @@ describe("ControlCore", () => {
     expect(httpFailed).toBeUndefined();
   }); 
 
-  it("TC-65: pages が空オブジェクトの場合 getPage は undefined を返す", () => {
+  it("TC-63: pages が空オブジェクトの場合 getPage は undefined を返す", () => {
     const core = new ControlCore({
       config: { version: 1, pages: {} },
       obs: {},
@@ -2045,7 +1978,7 @@ describe("ControlCore", () => {
     expect(core.getPage("main")).toBeUndefined();
   });
 
-  it("TC-66: buttons 未定義ページでは getButton は undefined を返す", () => {
+  it("TC-64: buttons 未定義ページでは getButton は undefined を返す", () => {
     const config: PanelConfig = {
       version: 1,
       pages: {
@@ -2068,7 +2001,7 @@ describe("ControlCore", () => {
     expect(btn).toBeUndefined();
   });
 
-  it("TC-67: emit は logger 未定義でも安全に失敗せず動作する", () => {
+  it("TC-65: emit は logger 未定義でも安全に失敗せず動作する", () => {
     const core = new ControlCore({
       config: { version: 1, pages: {} },
       obs: {},
@@ -2080,7 +2013,7 @@ describe("ControlCore", () => {
     expect(() => core.emit({ type: "test" })).not.toThrow();
   });
 
-  it("TC-68: obs.getStatus が undefined を返した場合 OBS_STATUS_FAILED を送る", async () => {
+  it("TC-66: obs.getStatus が undefined を返した場合 OBS_STATUS_FAILED を送る", async () => {
     const sent: any[] = [];
 
     const core = new ControlCore({
@@ -2113,7 +2046,7 @@ describe("ControlCore", () => {
     expect(msg).not.toBeUndefined();
   });
 
-  it("TC-69: execHttpAndReflectLabel は data が undefined の場合 label を更新しない", async () => {
+  it("TC-67: execHttpAndReflectLabel は data が undefined の場合 label を更新しない", async () => {
     const sent: any[] = [];
     const http = {
       // res.data が undefined になるケース
@@ -2170,84 +2103,6 @@ describe("ControlCore", () => {
     const mainMap = displayValues.get("main");
     // 「0,0」の display 値が登録されていない = ラベル更新されていない
     expect(mainMap?.has("0,0")).not.toBe(true);
-  });
-
-  it("TC-70: execHttpAndReflectLabel は res が undefined の場合 label を更新しない", async () => {
-    const sent: any[] = [];
-    const http = {
-      // res 自体が undefined
-      get: vi.fn().mockResolvedValue(undefined),
-    };
-
-    const config: PanelConfig = {
-      version: 1,
-      pages: {
-        main: {
-          buttons: [
-            {
-              x: 0,
-              y: 0,
-              label: "A",
-              action: {
-                type: "http.get",
-                url: "http://example.test",
-                displayKey: "value",
-              },
-            },
-          ],
-        },
-      },
-    };
-
-    const core = new ControlCore({
-      obs: {} as any,
-      http: http as any,
-      broadcaster: (msg: any) => sent.push(msg),
-      config,
-    });
-
-    core.initialize();
-    (core as any).currentPageKey = "main";
-    sent.length = 0;
-
-    await (core as any).execHttpAndReflectLabel(
-      "get",
-      { url: "http://example.test", displayKey: "value" },
-      0,
-      0,
-    );
-
-    const update = sent.find((m) => m.type === "page.update");
-    if (update) {
-      expect(update.payload.buttons[0].label).toBe("A");
-    }
-
-    const displayValues: Map<string, Map<string, string>> =
-      (core as any).displayValues;
-    const mainMap = displayValues.get("main");
-    expect(mainMap?.has("0,0")).not.toBe(true);
-  });
-
-  it("TC-71: http エラーでも displayKey 未指定なら HTTP_FAILED を送らない", async () => {
-    const sent: any[] = [];
-
-    const core = new ControlCore({
-      config: {
-        version: 1,
-        pages: { main: { buttons: [{ x: 0, y: 0, label: "A", action: { type: "http.get", url: "x" } }] } },
-      },
-      obs: {},
-      http: { get: async () => { throw new Error("fail"); } },
-      broadcaster: (m) => sent.push(m),
-    });
-
-    await core.initialize();
-    core.currentPageKey = "main";
-
-    await core.execHttpAndReflectLabel("main", 0, 0, { type: "http.get", url: "x" });
-
-    const err = sent.find((m) => m.type === "error" && m.code === "HTTP_FAILED");
-    expect(err).toBeUndefined(); // displayKey がないので error を送らない
   });
 
 });

@@ -326,6 +326,12 @@ export class ControlCore {
     return { key, buttons };
   }
 
+  private getButton(pageKey: string, x: number, y: number): Button | undefined {
+    const page = this.getPage(pageKey);
+    if (!page) return undefined;
+    return page.buttons.find((b) => b.x === x && b.y === y);
+  }
+
   private getCurrentPage(): { key: string; buttons: Button[] } | undefined {
     return this.getPage(this.currentPageKey);
   }
@@ -602,6 +608,7 @@ export class ControlCore {
   /**
    * OBS のステータスを取得して UI 更新するフック。
    * - getStatus() が reject → OBS_STATUS_FAILED（TC-22）
+   * - getStatus() が undefined/null → OBS_STATUS_FAILED（TC-68）
    * - 成功時は page.update を送る（詳細な反映は今は行わない）
    */
   public async updateStatusFromObs(): Promise<void> {
@@ -609,7 +616,14 @@ export class ControlCore {
       if (!this.obs.getStatus) {
         throw new Error("getStatus not implemented");
       }
-      await this.obs.getStatus();
+      const status = await this.obs.getStatus();
+
+      // 戻り値が空なら失敗扱い（TC-68）
+      if (status === undefined || status === null) {
+        this.sendError("OBS_STATUS_FAILED", "getStatus returned no data");
+        return;
+      }
+
       this.pushPageUpdate();
     } catch (e: any) {
       this.sendError("OBS_STATUS_FAILED", e?.message ?? String(e));
@@ -627,6 +641,8 @@ export class ControlCore {
    * - displayKey 未指定なら label は変更しない（TC-23）
    * - page.switch 後に http.get を打つ場合、新しい currentPageKey に対して更新（TC-36）
    * - HTTP_FAILED は「Promise が reject した場合のみ」（TC-12, 13）
+   * - res.data が undefined の場合は label を更新しない（TC-69）
+   * - res 自体が undefined/null の場合も label を更新しない（TC-70）
    */
   private async execHttpAndReflectLabel(
     method: "get" | "post",
@@ -659,21 +675,40 @@ export class ControlCore {
       return;
     }
 
-    let value: string;
-    const data = res && (res as any).data;
+    // res が undefined/null の場合は何もしない（TC-70）
+    if (res === undefined || res === null) {
+      return;
+    }
 
-    if (data && typeof data === "object" && displayKey in data) {
+    const hasDataProp =
+      typeof res === "object" && Object.prototype.hasOwnProperty.call(res, "data");
+    const data = (res as any).data;
+
+    // data プロパティが存在していて、中身が undefined/null の場合は
+    // 「data が undefined」ケースとして label を更新しない（TC-69）
+    if (hasDataProp && (data === undefined || data === null)) {
+      return;
+    }
+
+    let value: string;
+
+    if (
+      hasDataProp &&
+      data &&
+      typeof data === "object" &&
+      displayKey in (data as any)
+    ) {
+      // data 側に displayKey がある場合はそちらを優先（TC-56）
       value = String((data as any)[displayKey] ?? "");
-    } else if (res && typeof res === "object" && displayKey in (res as any)) {
+    } else if (!hasDataProp && typeof res === "object" && displayKey in (res as any)) {
+      // data プロパティが無い場合は res 本体から参照（TC-06, 48）
       value = String((res as any)[displayKey] ?? "");
     } else {
-      // displayKey 不在 → "N/A"（TC-37）
+      // data がオブジェクトだが displayKey 無し → "N/A"（TC-37）
+      // または data プロパティが無く res 本体にも displayKey 無し → "N/A"
       value = "N/A";
     }
 
-    // 現在のページに対して label を上書き。
-    // page.switch → http.get の順の場合は、すでに currentPageKey が切り替わっているため
-    // 新しいページの同座標に対して反映される（TC-36）。
     const pageKey = this.currentPageKey;
     if (pageKey) {
       this.setDisplayLabel(pageKey, x, y, value);
