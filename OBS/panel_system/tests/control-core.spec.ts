@@ -152,8 +152,8 @@ describe("ControlCore", () => {
         main: {
           name: "Main",
           buttons: [
-            { x: 0, y: 0, label: "A" },
-            { x: 0, y: 0, label: "B" },
+            { x: 0, y: 0, label: "A", action: { type: "noop" } },
+            { x: 0, y: 0, label: "B", action: { type: "noop" } },
           ],
         },
       },
@@ -2103,6 +2103,699 @@ describe("ControlCore", () => {
     const mainMap = displayValues.get("main");
     // 「0,0」の display 値が登録されていない = ラベル更新されていない
     expect(mainMap?.has("0,0")).not.toBe(true);
+  });
+
+  it("TC-68: getButton は存在するボタンのみを返す", () => {
+    const core = new ControlCore({
+      obs: {} as any,
+      http: {} as any,
+      broadcaster: () => {},   // 何もしないブロードキャスタ
+      logger: {},              // ロガーは空でOK
+      config: {
+        version: 1,
+        pages: {
+          main: {
+            buttons: [
+              { x: 0, y: 0, label: "A", action: { type: "noop" } },
+            ],
+          },
+        },
+      },
+    });
+
+    core.initialize();
+
+    // 存在するボタン: main ページ (0,0) はヒットする
+    const found = (core as any).getButton("main", 0, 0);
+    expect(found).toBeDefined();
+    expect(found.x).toBe(0);
+    expect(found.y).toBe(0);
+    expect(found.label).toBe("A");
+
+    // 座標違い → undefined
+    const notFound1 = (core as any).getButton("main", 1, 0);
+    expect(notFound1).toBeUndefined();
+
+    // ページ違い → undefined
+    const notFound2 = (core as any).getButton("unknown", 0, 0);
+    expect(notFound2).toBeUndefined();
+  });
+
+  it("TC-69: broadcaster が想定外形態でも emit は落ちない", () => {
+    const core = new ControlCore({
+      obs: {} as any,
+      http: {} as any,
+      broadcaster: {} as any, // send も broadcaster も無い
+      logger: {
+        error: vi.fn(),
+      },
+      config: {
+        version: 1,
+        pages: { main: { buttons: [] } },
+      },
+    });
+
+    // private メソッド呼び出し（TS 的には any で逃がす）
+    (core as any).emit("page.update", { foo: "bar" });
+
+    // 例外が飛ばなければ OK。追加で logger.error が呼ばれていないことを確認しても良い
+    expect((core as any).logger.error).not.toHaveBeenCalled();
+  });
+
+  it("TC-70: updateStatusFromObs で getStatus が null を返した場合 OBS_STATUS_FAILED", async () => {
+    const msgs: any[] = [];
+    const core = new ControlCore({
+      obs: {
+        getStatus: vi.fn().mockResolvedValue(null),
+      },
+      http: {} as any,
+      broadcaster: (msg: any) => msgs.push(msg),
+      logger: {},
+      config: {
+        version: 1,
+        pages: {
+          main: {
+            buttons: [{ x: 0, y: 0, label: "A", action: { type: "noop" } }],
+          },
+        },
+      },
+    });
+
+    core.initialize();
+    await core.updateStatusFromObs();
+
+    const errors = msgs.filter((m) => m.type === "error");
+    expect(errors).toHaveLength(1);
+    expect(errors[0].payload.code).toBe("OBS_STATUS_FAILED");
+    expect(errors[0].payload.message).toContain("no data");
+  });
+
+  it("TC-71: execHttpAndReflectLabel で res が undefined の場合 label を更新しない", async () => {
+    const sent: any[] = [];
+    const core = new ControlCore({
+      obs: {} as any,
+      http: {
+        get: vi.fn().mockResolvedValue(undefined), // res === undefined
+      },
+      broadcaster: (msg: any) => sent.push(msg),
+      logger: {},
+      config: {
+        version: 1,
+        pages: {
+          main: {
+            buttons: [
+              {
+                x: 0,
+                y: 0,
+                label: "A",
+                action: { type: "http.get", url: "http://example", displayKey: "value" },
+              },
+            ],
+          },
+        },
+      },
+    });
+
+    core.initialize();
+    core.currentPageKey = "main";
+
+    await core.handleMessage({
+      type: "button.click",
+      payload: { page: "main", x: 0, y: 0 },
+    });
+
+    // error(HTTP_FAILED) は飛ばない
+    const errors = sent.filter((m) => m.type === "error");
+    expect(errors.some((e) => e.payload.code === "HTTP_FAILED")).toBe(false);
+
+    // page.update のボタン label は元のまま "A"
+    const updates = sent.filter((m) => m.type === "page.update");
+    const lastUpdate = updates[updates.length - 1];
+    expect(lastUpdate.payload.buttons[0].label).toBe("A");
+  });
+
+  it("TC-72: currentPageKey undefined の場合 setDisplayLabel を呼ばない", async () => {
+    const send = vi.fn();
+
+    const core = new ControlCore({
+      broadcaster: { send },
+      obs: {},
+      http: {
+        get: vi.fn().mockResolvedValue({ value: "SHOULD_NOT_APPLY" }),
+      },
+      config: {
+        version: 1,
+        pages: {
+          main: {
+            buttons: [
+              { x: 0, y: 0, label: "MAIN", action: { type: "noop" } },
+            ],
+          },
+          test: {
+            buttons: [
+              { x: 4, y: 4, label: "ORIG", action: { type: "noop" } },
+            ],
+          },
+        },
+        currentPageKey: "test",
+      },
+    });
+
+    core.initialize();
+    send.mockClear();
+
+    // currentPageKey をあえて undefined にしてから HTTP 実行
+    core.currentPageKey = undefined;
+
+    await (core as any).execHttpAndReflectLabel(
+      "get",
+      { url: "http://example.test", displayKey: "value" },
+      4,
+      4,
+    );
+
+    // ここで currentPageKey を test に戻して page.update を送る
+    core.currentPageKey = "test";
+    core.pushPageUpdate();
+
+    // label は ORIG のまま（setDisplayLabel が呼ばれていない）
+    expect(send).toHaveBeenCalledTimes(1);
+    const [type, payload] = send.mock.calls[0];
+    expect(type).toBe("page.update");
+    expect(payload.buttons).toEqual([
+      { x: 4, y: 4, label: "ORIG" },
+    ]);
+  });
+
+  it("TC-73: メッセージ経由 page.switch で page 未指定なら INVALID_ACTION", async () => {
+    const send = vi.fn();
+    const core = new ControlCore({
+      broadcaster: { send },
+      obs: {},
+      http: {},
+      config: {
+        version: 1,
+        pages: { main: { buttons: [] } },
+        currentPageKey: "main",
+      },
+    });
+    core.initialize();
+
+    await core.handleMessage({ type: "page.switch", payload: {} });
+
+    expect(send).toHaveBeenCalledWith("error", {
+      code: "INVALID_ACTION",
+      message: "page missing",
+    });
+  });
+
+  it("TC-74: ボタン action.type 未指定なら INVALID_ACTION(action.type missing)", async () => {
+    const sent: any[] = [];
+    const broadcaster = (msg: any) => {
+      sent.push(msg);
+    };
+
+    const core = new ControlCore({
+      broadcaster,
+      obs: {},
+      http: {},
+      // main ページに action.type を持たないボタンを定義
+      config: {
+        version: 1,
+        pages: {
+          main: {
+            buttons: [
+              {
+                x: 0,
+                y: 0,
+                label: "NO_TYPE",
+                action: {}, // type プロパティ無し → onButtonClick 内 458–460 行の分岐
+              },
+            ],
+          },
+        },
+      },
+    });
+
+    core.initialize();
+
+    await core.handleButtonClick({
+      type: "button.click",
+      payload: { page: "main", x: 0, y: 0 },
+    });
+
+    const err = sent.find((m) => m.type === "error");
+    expect(err).toBeTruthy();
+    expect(err!.payload.code).toBe("INVALID_ACTION");
+    expect(err!.payload.message).toBe("action.type missing");
+  });
+
+  it("TC-75: メッセージ経由 http.get で url 未指定なら INVALID_ACTION", async () => {
+    const { broadcaster, obs, http, sent } = createMocks();
+
+    const core = new ControlCore({
+      broadcaster,
+      obs,
+      http,
+      configPath: defaultConfigPath,
+    });
+
+    core.initialize();
+
+    // onHttpGet に payload.url なしで到達させる → 549–551 行
+    await core.handleMessage({
+      type: "http.get",
+      payload: {}, // url プロパティ無し
+    });
+
+    const err = sent.find((m) => m.type === "error");
+    expect(err).toBeTruthy();
+    expect(err!.payload.code).toBe("INVALID_ACTION");
+    expect(err!.payload.message).toBe("url missing");
+  });
+
+  it("TC-76: メッセージ経由 http.post で url 未指定なら INVALID_ACTION", async () => {
+    const { broadcaster, obs, http, sent } = createMocks();
+
+    const core = new ControlCore({
+      broadcaster,
+      obs,
+      http,
+      configPath: defaultConfigPath,
+    });
+
+    core.initialize();
+
+    // onHttpPost に payload.url なしで到達させる → 566–568 行
+    await core.handleMessage({
+      type: "http.post",
+      payload: {}, // url プロパティ無し
+    });
+
+    const err = sent.find((m) => m.type === "error");
+    expect(err).toBeTruthy();
+    expect(err!.payload.code).toBe("INVALID_ACTION");
+    expect(err!.payload.message).toBe("url missing");
+  });
+
+  it("TC-77: メッセージ経由 http.get で例外なら HTTP_FAILED を送る", async () => {
+    const { broadcaster, obs, http, sent } = createMocks();
+
+    // http.get を reject させる
+    (http.get as any).mockRejectedValue(new Error("boom"));
+
+    const core = new ControlCore({
+      broadcaster,
+      obs,
+      http,
+      configPath: defaultConfigPath,
+    });
+
+    core.initialize();
+
+    await core.handleMessage({
+      type: "http.get",
+      payload: {
+        url: "http://example.com/status",
+      },
+    });
+
+    // HTTP_FAILED エラーが送られていることを確認
+    const err = sent.find((m) => m.type === "error");
+    expect(err).toBeTruthy();
+    expect(err!.payload.code).toBe("HTTP_FAILED");
+    expect(err!.payload.message).toBe("boom");
+  });
+
+  it("TC-78: opts.obs / opts.http 未指定でも {} で補完される", () => {
+    // obs/http を省略してコンストラクタを呼び出し、?? の右側を踏む
+    const core = new ControlCore({
+      broadcaster: { send: vi.fn() },
+      config: {
+        version: 1,
+        pages: {
+          main: {
+            buttons: [
+              { x: 0, y: 0, label: "A", action: { type: "noop" } },
+            ],
+          },
+        },
+      },
+    } as any);
+
+    // private なので any 経由で確認
+    expect((core as any).obs).toEqual({});
+    expect((core as any).http).toEqual({});
+  });
+
+  it("TC-79: 非 main ページで label が省略された場合は空文字で正規化される", () => {
+    const send = vi.fn();
+    const core = new ControlCore({
+      obs: {} as any,
+      http: {} as any,
+      broadcaster: { send },
+      config: {
+        version: 1,
+        pages: {
+          main: {
+            buttons: [
+              { x: 0, y: 0, label: "MAIN", action: { type: "noop" } },
+            ],
+          },
+          sub: {
+            // label を敢えて省略（b.label ?? "" の右側を踏ませる）
+            buttons: [
+              { x: 1, y: 2, action: { type: "noop" } },
+            ],
+          },
+        },
+        currentPageKey: "sub",
+      },
+    });
+
+    core.initialize();
+    send.mockClear();
+    core.pushPageUpdate();
+
+    const [type, payload] = send.mock.calls[0];
+    expect(type).toBe("page.update");
+    expect(payload.currentPage).toBe("sub");
+    expect(payload.buttons).toContainEqual({ x: 1, y: 2, label: "" });
+  });
+
+  it("TC-80: payload プロパティ自体が無い場合でも INVALID_ACTION(page missing) になる", async () => {
+    const send = vi.fn();
+    const core = new ControlCore({
+      obs: {} as any,
+      http: {} as any,
+      broadcaster: { send },
+      config: {
+        version: 1,
+        pages: {
+          main: {
+            buttons: [
+              { x: 0, y: 0, label: "MAIN", action: { type: "noop" } },
+            ],
+          },
+        },
+      },
+    });
+
+    core.initialize();
+    send.mockClear();
+
+    // msg.payload 自体を付けない → msg?.payload ?? {} の右側を踏む
+    await core.handleMessage({ type: "page.switch" });
+
+    expect(send).toHaveBeenCalledWith("error", {
+      code: "INVALID_ACTION",
+      message: "page missing",
+    });
+  });
+
+  it("TC-81: handleMessage 内で message を持たない例外が発生しても UNEXPECTED_ERROR にラップされる", async () => {
+    const send = vi.fn();
+    const logger = { error: vi.fn() };
+    const core = new ControlCore({
+      obs: {
+        toggleStreaming: vi.fn().mockImplementation(() => {
+          // Error ではなく素の string を throw して e?.message ?? String(e) の右側を踏む
+          throw "boom-toggle";
+        }),
+      } as any,
+      http: {} as any,
+      broadcaster: { send },
+      logger,
+      config: {
+        version: 1,
+        pages: {
+          main: {
+            buttons: [
+              {
+                x: 0,
+                y: 0,
+                label: "TOGGLE",
+                action: { type: "obs.toggleStreaming" },
+              },
+            ],
+          },
+        },
+        currentPageKey: "main",
+      },
+    });
+
+    core.initialize();
+    send.mockClear();
+
+    await core.handleMessage({
+      type: "button.click",
+      payload: { page: "main", x: 0, y: 0 },
+    });
+
+    const err = send.mock.calls.find(
+      (c) => c[0] === "error" && c[1].code === "UNEXPECTED_ERROR",
+    )?.[1];
+
+    expect(err).toBeDefined();
+    // e?.message が undefined なので String(e) が使われる
+    expect(err.message).toBe("boom-toggle");
+  });
+
+  it("TC-82: メッセージ経由 http.get で message を持たない例外でも HTTP_FAILED になる", async () => {
+    const send = vi.fn();
+    const httpGet = vi.fn().mockRejectedValue("boom-http-get");
+
+    const core = new ControlCore({
+      obs: {} as any,
+      http: { get: httpGet } as any,
+      broadcaster: { send },
+      config: {
+        version: 1,
+        pages: {
+          main: {
+            buttons: [
+              { x: 0, y: 0, label: "MAIN", action: { type: "noop" } },
+            ],
+          },
+        },
+      },
+    });
+
+    core.initialize();
+    send.mockClear();
+
+    await core.handleMessage({
+      type: "http.get",
+      payload: { url: "http://example.test" },
+    });
+
+    expect(send).toHaveBeenCalledWith("error", {
+      code: "HTTP_FAILED",
+      message: "boom-http-get",
+    });
+  });
+
+  it("TC-83: メッセージ経由 http.post で message を持たない例外でも HTTP_FAILED になる", async () => {
+    const send = vi.fn();
+    const httpPost = vi.fn().mockRejectedValue("boom-http-post");
+
+    const core = new ControlCore({
+      obs: {} as any,
+      http: { post: httpPost } as any,
+      broadcaster: { send },
+      config: {
+        version: 1,
+        pages: {
+          main: {
+            buttons: [
+              { x: 0, y: 0, label: "MAIN", action: { type: "noop" } },
+            ],
+          },
+        },
+      },
+    });
+
+    core.initialize();
+    send.mockClear();
+
+    await core.handleMessage({
+      type: "http.post",
+      payload: { url: "http://example.test", body: { a: 1 } },
+    });
+
+    expect(send).toHaveBeenCalledWith("error", {
+      code: "HTTP_FAILED",
+      message: "boom-http-post",
+    });
+  });
+
+  it("TC-84: updateStatusFromObs で message を持たない例外でも OBS_STATUS_FAILED になる", async () => {
+    const send = vi.fn();
+    const core = new ControlCore({
+      obs: {
+        getStatus: vi.fn().mockRejectedValue("boom-status"),
+      } as any,
+      http: {} as any,
+      broadcaster: { send },
+      config: {
+        version: 1,
+        pages: {
+          main: {
+            buttons: [
+              { x: 0, y: 0, label: "MAIN", action: { type: "noop" } },
+            ],
+          },
+        },
+        currentPageKey: "main",
+      },
+    });
+
+    core.initialize();
+    send.mockClear();
+
+    await core.updateStatusFromObs();
+
+    expect(send).toHaveBeenCalledWith("error", {
+      code: "OBS_STATUS_FAILED",
+      message: "boom-status",
+    });
+  });
+
+  it("TC-85: ボタン経由 http.get で message を持たない例外でも HTTP_FAILED になる", async () => {
+    const send = vi.fn();
+    const httpGet = vi.fn().mockRejectedValue("boom-http-button");
+
+    const core = new ControlCore({
+      obs: {} as any,
+      http: { get: httpGet } as any,
+      broadcaster: { send },
+      config: {
+        version: 1,
+        pages: {
+          main: {
+            buttons: [
+              {
+                x: 3,
+                y: 3,
+                label: "HTTP",
+                action: {
+                  type: "http.get",
+                  url: "http://example.test",
+                  displayKey: "val",
+                },
+              },
+            ],
+          },
+        },
+        currentPageKey: "main",
+      },
+    });
+
+    core.initialize();
+    send.mockClear();
+
+    await core.handleMessage({
+      type: "button.click",
+      payload: { page: "main", x: 3, y: 3 },
+    });
+
+    const err = send.mock.calls.find(
+      (c) => c[0] === "error" && c[1].code === "HTTP_FAILED",
+    )?.[1];
+
+    expect(err).toBeDefined();
+    expect(err.message).toBe("boom-http-button");
+  });
+
+  it("TC-86: execHttpAndReflectLabel data[displayKey] が undefined の場合は空文字で上書きされる", async () => {
+    const send = vi.fn();
+    const httpGet = vi.fn().mockResolvedValue({
+      data: { value: undefined }, // プロパティはあるが内容が undefined → ?? "" の右側
+    });
+
+    const core = new ControlCore({
+      obs: {} as any,
+      http: { get: httpGet } as any,
+      broadcaster: { send },
+      config: {
+        version: 1,
+        pages: {
+          main: {
+            buttons: [
+              {
+                x: 4,
+                y: 4,
+                label: "ORIG",
+                action: {
+                  type: "http.get",
+                  url: "http://example.test",
+                  displayKey: "value",
+                },
+              },
+            ],
+          },
+        },
+        currentPageKey: "main",
+      },
+    });
+
+    core.initialize();
+    send.mockClear();
+
+    await core.handleMessage({
+      type: "button.click",
+      payload: { page: "main", x: 4, y: 4 },
+    });
+
+    const update = send.mock.calls.find((c) => c[0] === "page.update")?.[1];
+    expect(update).toBeDefined();
+    expect(update.buttons).toContainEqual({ x: 4, y: 4, label: "" });
+  });
+
+  it("TC-87: execHttpAndReflectLabel res[displayKey] が undefined の場合は空文字で上書きされる", async () => {
+    const send = vi.fn();
+    const httpGet = vi.fn().mockResolvedValue({
+      // data プロパティ無し → res 本体から displayKey を参照
+      value: undefined,
+    });
+
+    const core = new ControlCore({
+      obs: {} as any,
+      http: { get: httpGet } as any,
+      broadcaster: { send },
+      config: {
+        version: 1,
+        pages: {
+          main: {
+            buttons: [
+              {
+                x: 5,
+                y: 5,
+                label: "ORIG",
+                action: {
+                  type: "http.get",
+                  url: "http://example.test",
+                  displayKey: "value",
+                },
+              },
+            ],
+          },
+        },
+        currentPageKey: "main",
+      },
+    });
+
+    core.initialize();
+    send.mockClear();
+
+    await core.handleMessage({
+      type: "button.click",
+      payload: { page: "main", x: 5, y: 5 },
+    });
+
+    const update = send.mock.calls.find((c) => c[0] === "page.update")?.[1];
+    expect(update).toBeDefined();
+    expect(update.buttons).toContainEqual({ x: 5, y: 5, label: "" });
   });
 
 });
