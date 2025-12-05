@@ -10,7 +10,8 @@
 
 ## 2. 依存パッケージインストール
 
-以下を実行して依存パッケージを導入する。
+以下を実行して依存パッケージを導入する。  
+※ pnpm がインストールされていない場合は、https://pnpm.io/ja/installation よりインストールしてください。
 ```shell
 pnpm -C OBS/panel_system install
 ```
