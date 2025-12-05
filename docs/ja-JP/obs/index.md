@@ -31,6 +31,10 @@
 
 - [パネルシステムの単体テスト・結合テスト方針とケース定義](tests/panel_system/00_test_policy.md)
 
+- [Control Core 単体テストケース定義（外部仕様テスト）](tests/panel_system/01_test_cases_core.md)
+- [Dock UI 単体テストケース定義](tests/panel_system/02_test_cases_dock.md)
+- [Stream Deck プラグイン 単体テストケース定義](tests/panel_system/03_test_cases_sd_plugin.md)
+
 ## 3. 更新ルール
 
 - 実装変更時は、対応する仕様・テストドキュメントを同一ブランチで更新する。
