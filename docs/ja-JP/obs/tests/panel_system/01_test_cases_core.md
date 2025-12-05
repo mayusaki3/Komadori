@@ -1,166 +1,163 @@
 [目次](./00_test_policy.md) > Core ロジック単体テスト > 01_test_cases_core
 
-# Control Core 単体テストケース定義（抜粋）
+# Control Core 単体テストケース定義（外部仕様テスト）
 
-本ドキュメントは、OBS パネルシステムの Core ロジック（ControlCore）に対する単体テストケースのうち、
-代表的なものを記載する。
-実際のテストコードは OBS/panel_system/tests/control-core.spec.ts に実装されており、
-ここに記載していないテストケースも存在する（TC-33 以降など）。
+本ドキュメントは、OBS パネルシステムの Core ロジック（ControlCore）に対する  
+**外部仕様として保証すべきテストケース** を記載する。
+
+以下に示す **OBS-PANEL-ControlCore-TC-001〜032** は  
+ControlCore の外部公開仕様であり、**削除・弱体化・省略を禁止**する。
+
+TC-033 以降は実装依存テストのため本ドキュメントには記載しない。
 
 ---
 
 ## 1. 対象モジュール
 
-- モジュール: src/control-core.ts
-- クラス: ControlCore
+- モジュール: `src/control-core.ts`
+- クラス: `ControlCore`
 - 主な公開メソッド:
-  - initialize
-  - handleMessage
-  - handleButtonClick
-  - updateStatusFromObs
-  - ほか内部ユーティリティ（emit, getPage, getButton, execHttpAndReflectLabel など）
+  - `initialize()`
+  - `handleMessage()`
+  - `handleButtonClick()`
+  - `updateStatusFromObs()`
+  - 内部ユーティリティ  
+    (`emit`, `getPage`, `getButton`, `execHttpAndReflectLabel` など)
 
 ---
 
-## 2. 前提
+## 2. 前提条件
 
 ### 2.1 共通前提
 
-- 設定ファイル（config.json 相当）はテスト用 JSON を使用する。
-- Dock 側とはメッセージ（オブジェクト）で双方向通信する想定。
-- OBS 側とはモッククライアントを利用する。
-- HTTP 呼び出しは axios をモックし、副作用を検証する。
+- 設定ファイルにはテスト専用 JSON を使用する。
+- Dock 側とはメッセージ（オブジェクト）で疑似通信する。
+- OBS 側はモッククライアントを使用する。
+- HTTP 呼び出しは axios をモックする。
 
 ### 2.2 テストデータの前提
 
-- main / util など複数ページ構成を使用。
-- 各ボタンには x, y, label, action が設定される。
-- action.type の例:
-  - obs.setScene
-  - obs.toggleStreaming
-  - obs.toggleRecording
-  - obs.toggleMute
-  - obs.setSourceVisibility
-  - http.get
-  - http.post
-  - page.switch
-  - それ以外（未知 action.type）もテスト対象。
+- ページ構成：`main` / `util`
+- 各ボタンは以下を必須とする：
+  - `x`, `y`
+  - `label`
+  - `action`
+- `action.type` の例：
+  - `obs.setScene`
+  - `obs.toggleStreaming`
+  - `obs.toggleRecording`
+  - `obs.toggleMute`
+  - `obs.setSourceVisibility`
+  - `http.get`
+  - `http.post`
+  - `page.switch`
+  - 未知の action.type（INVALID_ACTION を確認するため）
 
 ---
 
-## 3. テストケース一覧（抜粋）
-
-### 3.1 正常系・基本動作
-
-- **TC-01: 正常ロードで page.update を送信する**  
-  initialize 正常完了後、現在ページ（main）のレイアウトを Dock に送信。
-
-- **TC-02: 重複座標エラーで page.update を送信しない**  
-  ボタン座標が重複した設定の場合、起動エラーとなり page.update は送信されない。
-
-- **TC-03: 未定義ページ / 不正ページ文脈で INVALID_PAGE_CONTEXT**  
-  メッセージ中 page が currentPageKey と一致しない場合に INVALID_PAGE_CONTEXT。
-
-- **TC-04: button.click で obs.setScene が呼ばれる**
-
-- **TC-05: 配信/録画トグルで OBS API が呼ばれる**
-
-- **TC-06: http.get 成功時 displayKey をラベルに反映し page.update**
-
-- **TC-07: page.switch で main → util に切替して page.update**
-
-- **TC-08: 未知 action.type で INVALID_ACTION**
-
-- **TC-09: ボタン未定義座標で NO_BUTTON**
+## 3. テストケース（外部仕様として保持すべき項目）
 
 ---
 
-### 3.2 OBS / HTTP 連携・エラー処理
+# 3.1 正常系・基本動作
 
-- **TC-10: toggleMute で obs.toggleMute が呼ばれる**
+### **OBS-PANEL-ControlCore-TC-001: 正常ロードで page.update を送信する**
+- initialize 完了後、currentPage のレイアウトを Dock に通知する。
 
-- **TC-11: setSourceVisibility で obs.setSourceVisibility が呼ばれる**
+### **OBS-PANEL-ControlCore-TC-002: 重複座標エラーで page.update を送信しない**
+- ボタン座標の衝突時、起動はエラーとなり page.update は送信されない。
 
-- **TC-12: http.post で axios.post が呼ばれる**
+### **OBS-PANEL-ControlCore-TC-003: 未定義ページ / 不正ページ文脈で INVALID_PAGE_CONTEXT**
+- handleMessage 受信時、payload.page が currentPage と不一致なら INVALID_PAGE_CONTEXT。
 
-- **TC-13: HTTP 実行エラーで HTTP_FAILED**
+### **OBS-PANEL-ControlCore-TC-004: button.click → obs.setScene が呼ばれる**
 
-- **TC-14: config.version 不正で initialize エラー → page.update を送信しない**
+### **OBS-PANEL-ControlCore-TC-005: 配信/録画トグルで OBS API が呼ばれる**
 
-- **TC-15: pages 未定義で initialize エラー**
+### **OBS-PANEL-ControlCore-TC-006: http.get 成功時 displayKey がラベルに反映される**
 
-- **TC-16: ボタン座標範囲不正で initialize エラー**
+### **OBS-PANEL-ControlCore-TC-007: page.switch で main → util に切替する**
 
-- **TC-17: page.switch で page 未指定なら INVALID_ACTION**
+### **OBS-PANEL-ControlCore-TC-008: 未知 action.type → INVALID_ACTION を返す**
 
-- **TC-18: http.get で url 未指定なら INVALID_ACTION**
-
-- **TC-19: http.post で url 未指定なら INVALID_ACTION**
-
-- **TC-20: initialize 前に switchPage 呼び出し → NOT_INITIALIZED**
-
-- **TC-21: switchPage に未定義ページ指定 → INVALID_PAGE**
-
-- **TC-22: updateStatusFromObs の OBS 例外時 → OBS_STATUS_FAILED**
-
-- **TC-23: http.get displayKey 指定だがレスポンスにキー無し → ラベル更新なし**
-
-- **TC-24: version が number でない場合エラー**
-
-- **TC-25: pages プロパティ欠如で initialize エラー**
-
-- **TC-26: buttons 配列が無いページは initialize エラー**
-
-- **TC-27: ボタンの label または action 欠如で initialize エラー**
-
-- **TC-28: main が無い場合は pages の先頭を currentPageKey に採用**
-
-- **TC-29: initialize 前の button.click → NOT_INITIALIZED**
+### **OBS-PANEL-ControlCore-TC-009: ボタン未定義座標 → NO_BUTTON**
 
 ---
 
-### 3.3 **TC-30: currentPageKey が不正ページなら INVALID_ACTION**（仕様修正済）
+# 3.2 OBS / HTTP 連携・エラー処理
 
-条件:
-- initialize 正常完了後、テスト側で (core as any).currentPageKey = "invalid" に書き換える。
+### **OBS-PANEL-ControlCore-TC-010: obs.toggleMute が呼ばれる**
 
-手順:
-- handleButtonClick を呼び出す。
+### **OBS-PANEL-ControlCore-TC-011: obs.setSourceVisibility が呼ばれる**
 
-確認:
-- 返却エラー code が INVALID_ACTION。
-- currentPageKey は書き換わらない。
-- 他の副作用なし。
+### **OBS-PANEL-ControlCore-TC-012: http.post → axios.post が呼ばれる**
+
+### **OBS-PANEL-ControlCore-TC-013: HTTP 実行エラー → HTTP_FAILED**
+
+### **OBS-PANEL-ControlCore-TC-014: config.version 不正 → initialize エラー**
+
+### **OBS-PANEL-ControlCore-TC-015: pages 未定義 → initialize エラー**
+
+### **OBS-PANEL-ControlCore-TC-016: ボタン座標範囲不正 → initialize エラー**
+
+### **OBS-PANEL-ControlCore-TC-017: page.switch で page 未指定 → INVALID_ACTION**
+
+### **OBS-PANEL-ControlCore-TC-018: http.get url 未指定 → INVALID_ACTION**
+
+### **OBS-PANEL-ControlCore-TC-019: http.post url 未指定 → INVALID_ACTION**
+
+### **OBS-PANEL-ControlCore-TC-020: initialize 前の switchPage → NOT_INITIALIZED**
+
+### **OBS-PANEL-ControlCore-TC-021: switchPage に未定義ページ → INVALID_PAGE**
+
+### **OBS-PANEL-ControlCore-TC-022: updateStatusFromObs の OBS 例外 → OBS_STATUS_FAILED**
+
+### **OBS-PANEL-ControlCore-TC-023: http.get displayKey 指定あり／レスポンスにキー無し → ラベル更新なし**
+
+### **OBS-PANEL-ControlCore-TC-024: version が number でない → エラー**
+
+### **OBS-PANEL-ControlCore-TC-025: pages プロパティ欠如 → エラー**
+
+### **OBS-PANEL-ControlCore-TC-026: buttons 配列欠如 → エラー**
+
+### **OBS-PANEL-ControlCore-TC-027: ボタンの label / action 欠如 → エラー**
+
+### **OBS-PANEL-ControlCore-TC-028: main が無い場合 pages の先頭を currentPage とする**
+
+### **OBS-PANEL-ControlCore-TC-029: initialize 前の button.click → NOT_INITIALIZED**
 
 ---
 
-### 3.4 pushPageUpdate 関連
+# 3.3 currentPageKey の異常系
 
-- **TC-31: config 未設定時 pushPageUpdate は送信しない**  
-  config が falsy の場合は即 return。
-
-- **TC-32: currentPageKey 不正時 pushPageUpdate は送信しない**
+### **OBS-PANEL-ControlCore-TC-030: currentPageKey が不正 → INVALID_ACTION**
+- initialize 後に強制的に不正ページへ書換え → button.click → INVALID_ACTION を返す。
 
 ---
 
-## 4. 備考
+# 3.4 pushPageUpdate 関連
 
-- 本ドキュメントに記載する代表的テストケース（TC-01〜TC-32）は  
-  **ControlCore の外部仕様に対応するため、仕様変更がない限り内容の変更・削除を禁止する。**
+### **OBS-PANEL-ControlCore-TC-031: config 未設定 → pushPageUpdate は送信しない**
 
-- 追加された細粒度テスト（TC-33 以降）は、エラーハンドリングや分岐網羅を目的とした  
-  **実装依存テスト**であり、詳細仕様は control-core.spec.ts を一次ソースとして扱う。  
-  実装変更に伴ってテスト内容が差し替わることを許容するが、  
-  次の観点をカバーするテストが常に維持されていることを条件とする：  
-  - HTTP/OBS 例外発生時に正しいエラーコード（HTTP_FAILED, OBS_STATUS_FAILED 等）が送信されること  
-  - INVALID_ACTION / INVALID_PAGE / NOT_INITIALIZED などのエラー種別の制御が正しく行われること  
-  - ラベル更新が行われるべき場合・行われてはならない場合の判定が正しいこと  
+### **OBS-PANEL-ControlCore-TC-032: currentPageKey 不正 → pushPageUpdate は送信しない**
 
-- カバレッジ 100%（行・分岐）は、細粒度テストを再構成する際の目安とする。  
-  ただし **カバレッジ達成のみを目的としたテスト弱体化は禁止する。**
+---
 
-- エラーコード（INVALID_ACTION, INVALID_PAGE, NOT_INITIALIZED, HTTP_FAILED, OBS_STATUS_FAILED など）は  
-  ControlCore の実装仕様に準拠する。
+## 4. 保守ポリシー（重要）
+
+- **OBS-PANEL-ControlCore-TC-001〜032 は外部仕様であり変更禁止。**  
+  仕様変更時のみ、仕様と同一ブランチで更新する。
+
+- **TC-033 以降は実装依存テストとして control-core.spec.ts を一次ソースとする。**  
+  実装変更に伴う差し替えを許容する。
+
+- 常に保証すべき動作：
+  - HTTP/OBS の例外 → 正しいエラーコードを返すこと  
+  - INVALID_ACTION / INVALID_PAGE / NOT_INITIALIZED が破壊されないこと  
+  - displayKey ラベル更新のロジックが正しく動作すること  
+
+- カバレッジ 100%（行・分岐）は実装依存テストの判断基準とする。  
+  ただし **カバレッジ目的のテスト弱体化は禁止**。
 
 ---
 

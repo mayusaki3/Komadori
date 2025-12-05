@@ -2,38 +2,38 @@
  * ControlCore 単体テスト
  *
  * TestID 対応:
- * - TC-01: 正常ロード
- * - TC-02: 重複座標エラー
- * - TC-03: 未定義ページ / 不正ページ文脈
- * - TC-04: OBS シーン切替
- * - TC-05: 配信/録画トグル
- * - TC-06: HTTP 呼び出し＋表示更新
- * - TC-07: ページ切替同期
- * - TC-08: 不明 action.type エラー
- * - TC-09: NO_BUTTON エラー
- * - TC-10: toggleMute 実行
- * - TC-11: setSourceVisibility 実行
- * - TC-12: http.post 実行
- * - TC-13: HTTP エラー時のハンドリング
- * - TC-14: 不正 version
- * - TC-15: ページ未定義
- * - TC-16: 座標範囲不正
- * - TC-17: page.switch 必須パラメータ不足
- * - TC-18: http.get 必須パラメータ不足
- * - TC-19: http.post 必須パラメータ不足
- * - TC-20: switchPage 未初期化呼び出し
- * - TC-21: switchPage 未定義ページ指定
- * - TC-22: OBS ステータス取得失敗
- * - TC-23: HTTP displayKey 不一致
- * - TC-24: version が number でない場合エラー
- * - TC-25: pages が存在しない場合エラー
- * - TC-26: buttons 配列未定義ページはエラー
- * - TC-27: ボタンの label または action 欠如でエラー
- * - TC-28: main ページが無い場合、最初のページをデフォルトにする
- * - TC-29: 未初期化状態で button.click → NOT_INITIALIZED
- * - TC-30: currentPageKey が不正ページを指す場合 → INVALID_PAGE
- * - TC-31: config 未設定時の pushPageUpdate は何も送信しない
- * - TC-32: currentPageKey 不正時 pushPageUpdate は何も送信しない
+ * - OBS-PANEL-ControlCore-TC-01: 正常ロード
+ * - OBS-PANEL-ControlCore-TC-02: 重複座標エラー
+ * - OBS-PANEL-ControlCore-TC-03: 未定義ページ / 不正ページ文脈
+ * - OBS-PANEL-ControlCore-TC-04: OBS シーン切替
+ * - OBS-PANEL-ControlCore-TC-05: 配信/録画トグル
+ * - OBS-PANEL-ControlCore-TC-06: HTTP 呼び出し＋表示更新
+ * - OBS-PANEL-ControlCore-TC-07: ページ切替同期
+ * - OBS-PANEL-ControlCore-TC-08: 不明 action.type エラー
+ * - OBS-PANEL-ControlCore-TC-09: NO_BUTTON エラー
+ * - OBS-PANEL-ControlCore-TC-10: toggleMute 実行
+ * - OBS-PANEL-ControlCore-TC-11: setSourceVisibility 実行
+ * - OBS-PANEL-ControlCore-TC-12: http.post 実行
+ * - OBS-PANEL-ControlCore-TC-13: HTTP エラー時のハンドリング
+ * - OBS-PANEL-ControlCore-TC-14: 不正 version
+ * - OBS-PANEL-ControlCore-TC-15: ページ未定義
+ * - OBS-PANEL-ControlCore-TC-16: 座標範囲不正
+ * - OBS-PANEL-ControlCore-TC-17: page.switch 必須パラメータ不足
+ * - OBS-PANEL-ControlCore-TC-18: http.get 必須パラメータ不足
+ * - OBS-PANEL-ControlCore-TC-19: http.post 必須パラメータ不足
+ * - OBS-PANEL-ControlCore-TC-20: switchPage 未初期化呼び出し
+ * - OBS-PANEL-ControlCore-TC-21: switchPage 未定義ページ指定
+ * - OBS-PANEL-ControlCore-TC-22: OBS ステータス取得失敗
+ * - OBS-PANEL-ControlCore-TC-23: HTTP displayKey 不一致
+ * - OBS-PANEL-ControlCore-TC-24: version が number でない場合エラー
+ * - OBS-PANEL-ControlCore-TC-25: pages が存在しない場合エラー
+ * - OBS-PANEL-ControlCore-TC-26: buttons 配列未定義ページはエラー
+ * - OBS-PANEL-ControlCore-TC-27: ボタンの label または action 欠如でエラー
+ * - OBS-PANEL-ControlCore-TC-28: main ページが無い場合、最初のページをデフォルトにする
+ * - OBS-PANEL-ControlCore-TC-29: 未初期化状態で button.click → NOT_INITIALIZED
+ * - OBS-PANEL-ControlCore-TC-30: currentPageKey が不正ページを指す場合 → INVALID_PAGE
+ * - OBS-PANEL-ControlCore-TC-31: config 未設定時の pushPageUpdate は何も送信しない
+ * - OBS-PANEL-ControlCore-TC-32: currentPageKey 不正時 pushPageUpdate は何も送信しない
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -131,7 +131,7 @@ describe("ControlCore", () => {
     return logger;
   }
   
-  it("TC-01: 正常ロードで page.update を送信する", () => {
+  it("OBS-PANEL-ControlCore-TC-01: 正常ロードで page.update を送信する", () => {
     const { broadcaster, obs, http, sent } = createMocks();
 
     const logger = newLogger();
@@ -143,7 +143,7 @@ describe("ControlCore", () => {
     expect(update.payload.currentPage).toBe("main");
   });
 
-  it("TC-02: 重複座標エラーで page.update を送信しない", () => {
+  it("OBS-PANEL-ControlCore-TC-02: 重複座標エラーで page.update を送信しない", () => {
     const { broadcaster, obs, http, sent } = createMocks();
 
     const dupConfigPath = writeTempConfig("panel-dup.json", {
@@ -167,7 +167,7 @@ describe("ControlCore", () => {
     expect(update).toBeUndefined();
   });
 
-  it("TC-03: 未定義ページ / 不正ページ文脈で INVALID_PAGE_CONTEXT を返す", async () => {
+  it("OBS-PANEL-ControlCore-TC-03: 未定義ページ / 不正ページ文脈で INVALID_PAGE_CONTEXT を返す", async () => {
     const { broadcaster, obs, http, sent } = createMocks();
 
     const core = new ControlCore({
@@ -199,7 +199,7 @@ describe("ControlCore", () => {
     expect(err.payload?.code).toBe("INVALID_PAGE_CONTEXT");
   });
 
-  it("TC-04: button.click で obs.setScene が呼ばれる", async () => {
+  it("OBS-PANEL-ControlCore-TC-04: button.click で obs.setScene が呼ばれる", async () => {
     const { broadcaster, obs, http, sent } = createMocks();
 
     const core = new ControlCore({
@@ -222,7 +222,7 @@ describe("ControlCore", () => {
     expect(err).toBeUndefined();
   });
 
-  it("TC-05: 配信/録画トグルで各 OBS API が呼ばれる", async () => {
+  it("OBS-PANEL-ControlCore-TC-05: 配信/録画トグルで各 OBS API が呼ばれる", async () => {
     const { obs, http, sent, broadcaster, logger } = mkDeps();
 
     // 実装が呼ぶ正式名で action.type を定義
@@ -256,7 +256,7 @@ describe("ControlCore", () => {
     expect(err).toBeUndefined();
   });
 
-  it("TC-06: HTTP 呼び出し＋表示更新 (http.get)", async () => {
+  it("OBS-PANEL-ControlCore-TC-06: HTTP 呼び出し＋表示更新 (http.get)", async () => {
     const { obs, http, sent, broadcaster, logger } = mkDeps();
     http.get.mockResolvedValue({ status: "OK" }); // ← 期待レスポンス
 
@@ -292,7 +292,7 @@ describe("ControlCore", () => {
     expect(serialized).toContain("OK"); // label が OK に更新されていること
   });
 
-  it("TC-07: ページ切替同期 main→util", async () => {
+  it("OBS-PANEL-ControlCore-TC-07: ページ切替同期 main→util", async () => {
     const { broadcaster, obs, http, sent } = createMocks();
 
     const core = new ControlCore({
@@ -317,7 +317,7 @@ describe("ControlCore", () => {
     expect(last.payload.currentPage).toBe("util");
   });
 
-  it("TC-08: 不明 action.type で INVALID_ACTION エラー", async () => {
+  it("OBS-PANEL-ControlCore-TC-08: 不明 action.type で INVALID_ACTION エラー", async () => {
     const { broadcaster, obs, http, sent } = createMocks();
 
     const unknownConfigPath = writeTempConfig("panel-unknown-action.json", {
@@ -359,7 +359,7 @@ describe("ControlCore", () => {
     expect(err.payload?.code).toBe("INVALID_ACTION");
   });
 
-  it("TC-09: ボタン未定義座標で NO_BUTTON エラー", async () => {
+  it("OBS-PANEL-ControlCore-TC-09: ボタン未定義座標で NO_BUTTON エラー", async () => {
     const { broadcaster, obs, http, sent } = createMocks();
 
     const core = new ControlCore({
@@ -381,7 +381,7 @@ describe("ControlCore", () => {
     expect(err.payload?.code).toBe("NO_BUTTON");
   });
 
-  it("TC-10: toggleMute アクションで obs.toggleMute が呼ばれる", async () => {
+  it("OBS-PANEL-ControlCore-TC-10: toggleMute アクションで obs.toggleMute が呼ばれる", async () => {
     const { broadcaster, obs, http, sent } = createMocks();
 
     const muteConfigPath = writeTempConfig("panel-mute.json", {
@@ -419,7 +419,7 @@ describe("ControlCore", () => {
     expect(err).toBeUndefined();
   });
 
-  it("TC-11: setSourceVisibility アクションで obs.setSourceVisibility が呼ばれる", async () => {
+  it("OBS-PANEL-ControlCore-TC-11: setSourceVisibility アクションで obs.setSourceVisibility が呼ばれる", async () => {
     const { broadcaster, obs, http, sent } = createMocks();
 
     const visConfigPath = writeTempConfig("panel-vis.json", {
@@ -466,7 +466,7 @@ describe("ControlCore", () => {
     expect(err).toBeUndefined();
   });
 
-  it("TC-12: http.post アクションで http.post が呼ばれる", async () => {
+  it("OBS-PANEL-ControlCore-TC-12: http.post アクションで http.post が呼ばれる", async () => {
     const { broadcaster, obs, http, sent } = createMocks();
 
     const postConfigPath = writeTempConfig("panel-http-post.json", {
@@ -507,7 +507,7 @@ describe("ControlCore", () => {
     expect(err).toBeUndefined();
   });
 
-  it("TC-13: HTTP 実行エラー時に HTTP_FAILED エラーを返す", async () => {
+  it("OBS-PANEL-ControlCore-TC-13: HTTP 実行エラー時に HTTP_FAILED エラーを返す", async () => {
     const { broadcaster, obs } = createMocks();
 
     const httpError: HttpClient = {
@@ -559,7 +559,7 @@ describe("ControlCore", () => {
     expect(err).toBeTruthy();
   });
 
-  it("TC-14: 不正 version で起動エラーになり page.update を送信しない", () => {
+  it("OBS-PANEL-ControlCore-TC-14: 不正 version で起動エラーになり page.update を送信しない", () => {
     const { broadcaster, obs, http, sent } = createMocks();
 
     const invalidVersionPath = writeTempConfig("panel-invalid-version.json", {
@@ -584,7 +584,7 @@ describe("ControlCore", () => {
     expect(update).toBeUndefined();
   });
 
-  it("TC-15: ページ未定義で起動エラーになり page.update を送信しない", () => {
+  it("OBS-PANEL-ControlCore-TC-15: ページ未定義で起動エラーになり page.update を送信しない", () => {
     const { broadcaster, obs, http, sent } = createMocks();
 
     const noPagesPath = writeTempConfig("panel-no-pages.json", {
@@ -604,7 +604,7 @@ describe("ControlCore", () => {
     expect(update).toBeUndefined();
   });
 
-  it("TC-16: 座標範囲不正で起動エラーになり page.update を送信しない", () => {
+  it("OBS-PANEL-ControlCore-TC-16: 座標範囲不正で起動エラーになり page.update を送信しない", () => {
     const { broadcaster, obs, http, sent } = createMocks();
 
     const outOfRangePath = writeTempConfig("panel-out-of-range.json", {
@@ -631,7 +631,7 @@ describe("ControlCore", () => {
     expect(update).toBeUndefined();
   });
 
-  it("TC-17: page.switch で page 未指定の場合 INVALID_ACTION エラー", async () => {
+  it("OBS-PANEL-ControlCore-TC-17: page.switch で page 未指定の場合 INVALID_ACTION エラー", async () => {
     const { broadcaster, obs, http, sent } = createMocks();
 
     const cfg = writeTempConfig("panel-missing-page-switch.json", {
@@ -666,7 +666,7 @@ describe("ControlCore", () => {
     expect(err?.payload?.code).toBe("INVALID_ACTION");
   });
 
-  it("TC-18: http.get で url 未指定の場合 INVALID_ACTION エラー", async () => {
+  it("OBS-PANEL-ControlCore-TC-18: http.get で url 未指定の場合 INVALID_ACTION エラー", async () => {
     const { broadcaster, obs, http, sent } = createMocks();
 
     const cfg = writeTempConfig("panel-missing-http-get-url.json", {
@@ -703,7 +703,7 @@ describe("ControlCore", () => {
     expect(http.get).not.toHaveBeenCalled();
   });
 
-  it("TC-19: http.post で url 未指定の場合 INVALID_ACTION エラー", async () => {
+  it("OBS-PANEL-ControlCore-TC-19: http.post で url 未指定の場合 INVALID_ACTION エラー", async () => {
     const { broadcaster, obs, http, sent } = createMocks();
 
     const cfg = writeTempConfig("panel-missing-http-post-url.json", {
@@ -739,7 +739,7 @@ describe("ControlCore", () => {
     expect(http.post).not.toHaveBeenCalled();
   });
 
-  it("TC-20: switchPage を未初期化状態で呼ぶと NOT_INITIALIZED エラー", async () => {
+  it("OBS-PANEL-ControlCore-TC-20: switchPage を未初期化状態で呼ぶと NOT_INITIALIZED エラー", async () => {
     const { broadcaster, obs, http, sent } = createMocks();
     const core = new ControlCore({
       // initialize を呼ばない
@@ -756,7 +756,7 @@ describe("ControlCore", () => {
     expect(err?.payload?.code).toBe("NOT_INITIALIZED");
   });
 
-  it("TC-21: switchPage に未定義ページを指定すると INVALID_PAGE エラー", async () => {
+  it("OBS-PANEL-ControlCore-TC-21: switchPage に未定義ページを指定すると INVALID_PAGE エラー", async () => {
     const { broadcaster, obs, http, sent } = createMocks();
     const core = new ControlCore({ configPath: defaultConfigPath, broadcaster, obs, http });
 
@@ -767,7 +767,7 @@ describe("ControlCore", () => {
     expect(err?.payload?.code).toBe("INVALID_PAGE");
   });
 
-  it("TC-22: updateStatusFromObs 失敗時に OBS_STATUS_FAILED エラー", async () => {
+  it("OBS-PANEL-ControlCore-TC-22: updateStatusFromObs 失敗時に OBS_STATUS_FAILED エラー", async () => {
     const { broadcaster, http, sent } = createMocks();
 
     const obs: ObsController = {
@@ -793,7 +793,7 @@ describe("ControlCore", () => {
     expect(err?.payload?.code).toBe("OBS_STATUS_FAILED");
   });
 
-  it("TC-23: http.get displayKey 指定だがレスポンスにキー無しの場合 label 未更新", async () => {
+  it("OBS-PANEL-ControlCore-TC-23: http.get displayKey 指定だがレスポンスにキー無しの場合 label 未更新", async () => {
     const { broadcaster, obs, sent } = createMocks();
 
     const http: HttpClient = {
@@ -861,7 +861,7 @@ describe("ControlCore", () => {
     return { obs, http, sent, broadcaster, logger };
   };
 
-  it("TC-24: version が number でない場合エラー", () => {
+  it("OBS-PANEL-ControlCore-TC-24: version が number でない場合エラー", () => {
     const cfgPath = writeJson(tmpDir, "tc24.json", {
       version: "1", // 不正
       pages: { main: { name: "Main", buttons: [] } },
@@ -875,14 +875,14 @@ describe("ControlCore", () => {
     expect(update).toBeUndefined();
   });
 
-  it("TC-25: pages 欠如でエラー", () => {
+  it("OBS-PANEL-ControlCore-TC-25: pages 欠如でエラー", () => {
     const cfgPath = writeJson(tmpDir, "tc25.json", { version: 1 });
     const { obs, http, broadcaster, logger } = mkDeps();
     const core = new ControlCore({ obs, http, broadcaster, logger, configPath: cfgPath });
     expect(() => core.initialize()).toThrow();
   });
 
-  it("TC-26: buttons 配列未定義ページはエラー", () => {
+  it("OBS-PANEL-ControlCore-TC-26: buttons 配列未定義ページはエラー", () => {
     const cfgPath = writeJson(tmpDir, "tc26.json", {
       version: 1,
       pages: { main: { name: "Main" } }, // buttons 無し
@@ -892,7 +892,7 @@ describe("ControlCore", () => {
     expect(() => core.initialize()).toThrow();
   });
 
-  it("TC-27: ボタンの label または action 欠如でエラー", () => {
+  it("OBS-PANEL-ControlCore-TC-27: ボタンの label または action 欠如でエラー", () => {
     const cfgPath = writeJson(tmpDir, "tc27.json", {
       version: 1,
       pages: {
@@ -910,7 +910,7 @@ describe("ControlCore", () => {
     expect(() => core.initialize()).toThrow();
   });
 
-  it("TC-28: main が無い場合、最初のページをデフォルトにする", () => {
+  it("OBS-PANEL-ControlCore-TC-28: main が無い場合、最初のページをデフォルトにする", () => {
     const cfgPath = writeJson(tmpDir, "tc28.json", {
       version: 1,
       pages: {
@@ -928,7 +928,7 @@ describe("ControlCore", () => {
     expect(update?.payload?.currentPage).toBe("util");
   });
 
-  it("TC-29: 未初期化状態で button.click → NOT_INITIALIZED", async () => {
+  it("OBS-PANEL-ControlCore-TC-29: 未初期化状態で button.click → NOT_INITIALIZED", async () => {
     const cfgPath = writeJson(tmpDir, "tc29.json", {
       version: 1,
       pages: { main: { name: "Main", buttons: [] } },
@@ -941,7 +941,7 @@ describe("ControlCore", () => {
     expect(err?.code || err?.payload?.code).toBe("NOT_INITIALIZED");
   });
 
-  it("TC-30: currentPageKey が不正ページを指す → INVALID_ACTION", async () => {
+  it("OBS-PANEL-ControlCore-TC-30: currentPageKey が不正ページを指す → INVALID_ACTION", async () => {
     const { obs, http, sent, broadcaster, logger } = mkDeps();
     const cfgPath = writeJsonTemp({
       version: 1,
@@ -956,7 +956,7 @@ describe("ControlCore", () => {
     expect(err?.code || err?.payload?.code).toBe("INVALID_ACTION"); // ← 変更
   });
 
-  it("TC-31: config 未設定時 pushPageUpdate は送信しない", () => {
+  it("OBS-PANEL-ControlCore-TC-31: config 未設定時 pushPageUpdate は送信しない", () => {
     const { obs, http, broadcaster, logger, sent } = mkDeps();
     const core: any = new ControlCore({ obs, http, broadcaster, logger, configPath: "" });
     // initialize せず直接呼ぶ
@@ -965,7 +965,7 @@ describe("ControlCore", () => {
     expect(update).toBeUndefined();
   });
 
-  it("TC-32: currentPageKey 不正時 pushPageUpdate は送信しない", () => {
+  it("OBS-PANEL-ControlCore-TC-32: currentPageKey 不正時 pushPageUpdate は送信しない", () => {
     const cfgPath = writeJson(tmpDir, "tc32.json", {
       version: 1,
       pages: {
@@ -985,7 +985,7 @@ describe("ControlCore", () => {
     expect(update).toBeUndefined();
   });
 
-  it("TC-33: 同一ページへの page.switch はノーオペ", async () => {
+  it("OBS-PANEL-ControlCore-TC-33: 同一ページへの page.switch はノーオペ", async () => {
     const cfgPath = writeJsonTemp({
       version: 1,
       currentPage: "main",
@@ -1009,7 +1009,7 @@ describe("ControlCore", () => {
     expect(sent.find(m => m?.type === "error")).toBeUndefined();
   });
 
-  it("TC-34: ページ文脈不一致 → INVALID_PAGE_CONTEXT", async () => {
+  it("OBS-PANEL-ControlCore-TC-34: ページ文脈不一致 → INVALID_PAGE_CONTEXT", async () => {
     const cfgPath = writeJsonTemp({
       version: 1,
       currentPage: "main",
@@ -1035,7 +1035,7 @@ describe("ControlCore", () => {
     expect(obs.setScene).not.toHaveBeenCalled();
   });
 
-  it("TC-35: 複数アクションは順序を維持して実行", async () => {
+  it("OBS-PANEL-ControlCore-TC-35: 複数アクションは順序を維持して実行", async () => {
     const cfgPath = writeJsonTemp({
       version: 1,
       pages: {
@@ -1065,7 +1065,7 @@ describe("ControlCore", () => {
     expect(obs.setScene.mock.invocationCallOrder[0]).toBeLessThan(http.get.mock.invocationCallOrder[0]);
   });
 
-  it("TC-36: page.switch 後の http.displayKey 更新は新ページへ反映", async () => {
+  it("OBS-PANEL-ControlCore-TC-36: page.switch 後の http.displayKey 更新は新ページへ反映", async () => {
     const cfgPath = writeJsonTemp({
       version: 1,
       pages: {
@@ -1093,7 +1093,7 @@ describe("ControlCore", () => {
     expect(serialized).toContain('"label":"OK"');
   });
 
-  it("TC-37: http.get displayKey 不在 → 'N/A' で更新＋page.update", async () => {
+  it("OBS-PANEL-ControlCore-TC-37: http.get displayKey 不在 → 'N/A' で更新＋page.update", async () => {
     const cfgPath = writeJsonTemp({
       version: 1,
       pages: { main: { buttons: [ { x: 0, y: 0, label: "STATUS", action: [
@@ -1116,7 +1116,7 @@ describe("ControlCore", () => {
     expect(serialized).toContain('"label":"N/A"');
   });
 
-  it("TC-38: 未知アクションは INVALID_ACTION を送って継続実行", async () => {
+  it("OBS-PANEL-ControlCore-TC-38: 未知アクションは INVALID_ACTION を送って継続実行", async () => {
     const cfgPath = writeJsonTemp({
       version: 1,
       pages: {
@@ -1142,7 +1142,7 @@ describe("ControlCore", () => {
     expect(obs.toggleMute).toHaveBeenCalledTimes(1);
   });
 
-  it("TC-39: config オブジェクト直渡しでも initialize できる", () => {
+  it("OBS-PANEL-ControlCore-TC-39: config オブジェクト直渡しでも initialize できる", () => {
     const sent: any[] = [];
     const broadcaster = {
       send: (type: string, payload: any) => {
@@ -1172,7 +1172,7 @@ describe("ControlCore", () => {
     expect(update?.payload?.currentPage).toBe("main");
   });
 
-  it("TC-40: configPath も config も無い場合 initialize は例外を投げる", () => {
+  it("OBS-PANEL-ControlCore-TC-40: configPath も config も無い場合 initialize は例外を投げる", () => {
     const core = new ControlCore({
       obs: {},
       http: {},
@@ -1184,7 +1184,7 @@ describe("ControlCore", () => {
     expect(() => core.initialize()).toThrow("configPath is not set");
   });
 
-  it("TC-41: updateStatusFromObs 成功時に page.update を送る", async () => {
+  it("OBS-PANEL-ControlCore-TC-41: updateStatusFromObs 成功時に page.update を送る", async () => {
     const sent: any[] = [];
     const broadcaster = {
       send: (type: string, payload: any) => {
@@ -1222,7 +1222,7 @@ describe("ControlCore", () => {
     expect(update).toBeTruthy();
   });
 
-  it("TC-42: getStatus 未実装なら OBS_STATUS_FAILED エラーを送る", async () => {
+  it("OBS-PANEL-ControlCore-TC-42: getStatus 未実装なら OBS_STATUS_FAILED エラーを送る", async () => {
     const sent: any[] = [];
     const broadcaster = (msg: any) => {
       sent.push(msg);
@@ -1253,7 +1253,7 @@ describe("ControlCore", () => {
     expect(err?.payload?.code).toBe("OBS_STATUS_FAILED");
   });
 
-  it("TC-43: 未知メッセージ種別は INVALID_ACTION エラーを返す", async () => {
+  it("OBS-PANEL-ControlCore-TC-43: 未知メッセージ種別は INVALID_ACTION エラーを返す", async () => {
     const sent: any[] = [];
     const broadcaster = (msg: any) => {
       sent.push(msg);
@@ -1284,7 +1284,7 @@ describe("ControlCore", () => {
     expect(err?.payload?.code).toBe("INVALID_ACTION");
   });
 
-  it("TC-44: HTTP アクションで displayKey 未指定なら label を変更しない", async () => {
+  it("OBS-PANEL-ControlCore-TC-44: HTTP アクションで displayKey 未指定なら label を変更しない", async () => {
     const sent: any[] = [];
     const broadcaster = {
       send: (type: string, payload: any) => {
@@ -1333,7 +1333,7 @@ describe("ControlCore", () => {
     expect(update?.payload?.buttons[0]?.label).toBe("OLD");
   });
 
-  it("TC-45: broadcaster が例外を投げても emit は logger.error を呼び出して落ちない", () => {
+  it("OBS-PANEL-ControlCore-TC-45: broadcaster が例外を投げても emit は logger.error を呼び出して落ちない", () => {
     const logger = {
       error: vi.fn(),
     };
@@ -1366,7 +1366,7 @@ describe("ControlCore", () => {
     expect(logger.error).toHaveBeenCalled();
   });
 
-  it("TC-46: http アクションで url 未指定の場合 INVALID_ACTION (execHttpAndReflectLabel)", async () => {
+  it("OBS-PANEL-ControlCore-TC-46: http アクションで url 未指定の場合 INVALID_ACTION (execHttpAndReflectLabel)", async () => {
     const sent: any[] = [];
     const broadcaster = (msg: any) => sent.push(msg);
     const http = {
@@ -1410,7 +1410,7 @@ describe("ControlCore", () => {
     expect(http.get).not.toHaveBeenCalled();
   });
 
-  it("TC-47: ボタン経由 http.get で HTTP_FAILED が発生する (execHttpAndReflectLabel)", async () => {
+  it("OBS-PANEL-ControlCore-TC-47: ボタン経由 http.get で HTTP_FAILED が発生する (execHttpAndReflectLabel)", async () => {
     const sent: any[] = [];
     const broadcaster = (msg: any) => sent.push(msg);
     const http = {
@@ -1454,7 +1454,7 @@ describe("ControlCore", () => {
     expect(err?.payload?.code).toBe("HTTP_FAILED");
   });
 
-  it("TC-48: execHttpAndReflectLabel で res 本体の displayKey を参照する", async () => {
+  it("OBS-PANEL-ControlCore-TC-48: execHttpAndReflectLabel で res 本体の displayKey を参照する", async () => {
     const sent: any[] = [];
     const broadcaster = (msg: any) => sent.push(msg);
     const http = {
@@ -1501,7 +1501,7 @@ describe("ControlCore", () => {
     expect(btn?.label).toBe("RES_VALUE");
   });
 
-  it("TC-49: メッセージ経由 http.get 成功時は HTTP_FAILED を送らない", async () => {
+  it("OBS-PANEL-ControlCore-TC-49: メッセージ経由 http.get 成功時は HTTP_FAILED を送らない", async () => {
     const sent: any[] = [];
     const broadcaster = (msg: any) => sent.push(msg);
     const http = {
@@ -1537,7 +1537,7 @@ describe("ControlCore", () => {
     expect(http.get).toHaveBeenCalledTimes(1);
   });
 
-  it("TC-50: メッセージ経由 http.post エラー時に HTTP_FAILED を送る", async () => {
+  it("OBS-PANEL-ControlCore-TC-50: メッセージ経由 http.post エラー時に HTTP_FAILED を送る", async () => {
     const sent: any[] = [];
     const broadcaster = (msg: any) => sent.push(msg);
     const http = {
@@ -1572,7 +1572,7 @@ describe("ControlCore", () => {
     expect(err?.payload?.code).toBe("HTTP_FAILED");
   });
 
-  it("TC-51: emit で send/broadcaster/関数いずれでもない場合は何もせず落ちない", () => {
+  it("OBS-PANEL-ControlCore-TC-51: emit で send/broadcaster/関数いずれでもない場合は何もせず落ちない", () => {
     const broadcaster = { foo: 1 }; // send/broadcaster を持たない形
 
     const core = new ControlCore({
@@ -1596,7 +1596,7 @@ describe("ControlCore", () => {
     // 送信先が無いので、特にアサートは不要（落ちないことだけ確認）
   });
 
-  it("TC-52: handleMessage 内での例外は UNEXPECTED_ERROR にラップされる", async () => {
+  it("OBS-PANEL-ControlCore-TC-52: handleMessage 内での例外は UNEXPECTED_ERROR にラップされる", async () => {
     const sent: any[] = [];
     const broadcaster = (msg: any) => sent.push(msg);
 
@@ -1639,7 +1639,7 @@ describe("ControlCore", () => {
     expect(err?.payload?.code).toBe("UNEXPECTED_ERROR");
   });
 
-  it("TC-53: config 内ボタン座標型不正でエラーになる", () => {
+  it("OBS-PANEL-ControlCore-TC-53: config 内ボタン座標型不正でエラーになる", () => {
     // x が number ではないケースで validateAndNormalizeConfig の
     // 「invalid button coordinates」ブランチを踏ませる
     const badConfig: PanelConfig = {
@@ -1670,7 +1670,7 @@ describe("ControlCore", () => {
     );
   });
 
-  it("TC-54: page オブジェクト自体が falsy な場合はエラーになる", () => {
+  it("OBS-PANEL-ControlCore-TC-54: page オブジェクト自体が falsy な場合はエラーになる", () => {
     // pages: { main: undefined } で「page main is invalid」ブランチを踏ませる
     const badConfig: PanelConfig = {
       version: 1,
@@ -1689,7 +1689,7 @@ describe("ControlCore", () => {
     expect(() => core.initialize()).toThrowError(/page main is invalid/);
   });
 
-  it("TC-55: execHttpAndReflectLabel で currentPageKey 未設定なら label は更新されない", async () => {
+  it("OBS-PANEL-ControlCore-TC-55: execHttpAndReflectLabel で currentPageKey 未設定なら label は更新されない", async () => {
     const get = vi.fn().mockResolvedValue({
       data: { value: "OK" },
     });
@@ -1718,7 +1718,7 @@ describe("ControlCore", () => {
     expect(get).toHaveBeenCalledTimes(1);
   });
 
-  it("TC-56: execHttpAndReflectLabel は data 側の displayKey を優先してラベル更新する", async () => {
+  it("OBS-PANEL-ControlCore-TC-56: execHttpAndReflectLabel は data 側の displayKey を優先してラベル更新する", async () => {
     const get = vi.fn().mockResolvedValue({
       data: { value: "DATA" },
       value: "ROOT",
@@ -1771,7 +1771,7 @@ describe("ControlCore", () => {
     expect(get).toHaveBeenCalledTimes(1);
   });
 
-  it("TC-57: toggleStreaming 未実装で toggleStream が呼ばれる", async () => {
+  it("OBS-PANEL-ControlCore-TC-57: toggleStreaming 未実装で toggleStream が呼ばれる", async () => {
     const obs: ObsController = {
       // toggleStreaming は未定義
       toggleStream: vi.fn(),
@@ -1811,7 +1811,7 @@ describe("ControlCore", () => {
     expect(obs.toggleStream).toHaveBeenCalledTimes(1);
   });
 
-  it("TC-58: toggleRecording 未実装で toggleRecord が呼ばれる", async () => {
+  it("OBS-PANEL-ControlCore-TC-58: toggleRecording 未実装で toggleRecord が呼ばれる", async () => {
     const obs: ObsController = {
       // toggleRecording は未定義
       toggleRecord: vi.fn(),
@@ -1851,7 +1851,7 @@ describe("ControlCore", () => {
     expect(obs.toggleRecord).toHaveBeenCalledTimes(1);
   });
 
-  it("TC-59: currentPage 指定で currentPageKey が上書きされる", () => {
+  it("OBS-PANEL-ControlCore-TC-59: currentPage 指定で currentPageKey が上書きされる", () => {
     const obs: ObsController = {};
     const http: HttpClient = {};
     const send = vi.fn();
@@ -1891,7 +1891,7 @@ describe("ControlCore", () => {
     expect(payload.currentPage).toBe("util");
   });
 
-  it("TC-60: config 未設定時 getPage は undefined を返す (早期 return パス)", () => {
+  it("OBS-PANEL-ControlCore-TC-60: config 未設定時 getPage は undefined を返す (早期 return パス)", () => {
     const obs: ObsController = {};
     const http: HttpClient = {};
     const send = vi.fn();
@@ -1908,7 +1908,7 @@ describe("ControlCore", () => {
     expect(page).toBeUndefined();
   });
 
-  it("TC-61: getPage は key 未指定なら undefined を返す", () => {
+  it("OBS-PANEL-ControlCore-TC-61: getPage は key 未指定なら undefined を返す", () => {
     const config: PanelConfig = {
       version: 1,
       pages: {
@@ -1931,7 +1931,7 @@ describe("ControlCore", () => {
     expect(page).toBeUndefined();
   });
 
-  it("TC-62: メッセージ経由 http.post 成功時は HTTP_FAILED エラーを送らない", async () => {
+  it("OBS-PANEL-ControlCore-TC-62: メッセージ経由 http.post 成功時は HTTP_FAILED エラーを送らない", async () => {
     const errors: any[] = [];
 
     const http = {
@@ -1967,7 +1967,7 @@ describe("ControlCore", () => {
     expect(httpFailed).toBeUndefined();
   }); 
 
-  it("TC-63: pages が空オブジェクトの場合 getPage は undefined を返す", () => {
+  it("OBS-PANEL-ControlCore-TC-63: pages が空オブジェクトの場合 getPage は undefined を返す", () => {
     const core = new ControlCore({
       config: { version: 1, pages: {} },
       obs: {},
@@ -1978,7 +1978,7 @@ describe("ControlCore", () => {
     expect(core.getPage("main")).toBeUndefined();
   });
 
-  it("TC-64: buttons 未定義ページでは getButton は undefined を返す", () => {
+  it("OBS-PANEL-ControlCore-TC-64: buttons 未定義ページでは getButton は undefined を返す", () => {
     const config: PanelConfig = {
       version: 1,
       pages: {
@@ -2001,7 +2001,7 @@ describe("ControlCore", () => {
     expect(btn).toBeUndefined();
   });
 
-  it("TC-65: emit は logger 未定義でも安全に失敗せず動作する", () => {
+  it("OBS-PANEL-ControlCore-TC-65: emit は logger 未定義でも安全に失敗せず動作する", () => {
     const core = new ControlCore({
       config: { version: 1, pages: {} },
       obs: {},
@@ -2013,7 +2013,7 @@ describe("ControlCore", () => {
     expect(() => core.emit({ type: "test" })).not.toThrow();
   });
 
-  it("TC-66: obs.getStatus が undefined を返した場合 OBS_STATUS_FAILED を送る", async () => {
+  it("OBS-PANEL-ControlCore-TC-66: obs.getStatus が undefined を返した場合 OBS_STATUS_FAILED を送る", async () => {
     const sent: any[] = [];
 
     const core = new ControlCore({
@@ -2046,7 +2046,7 @@ describe("ControlCore", () => {
     expect(msg).not.toBeUndefined();
   });
 
-  it("TC-67: execHttpAndReflectLabel は data が undefined の場合 label を更新しない", async () => {
+  it("OBS-PANEL-ControlCore-TC-67: execHttpAndReflectLabel は data が undefined の場合 label を更新しない", async () => {
     const sent: any[] = [];
     const http = {
       // res.data が undefined になるケース
@@ -2105,7 +2105,7 @@ describe("ControlCore", () => {
     expect(mainMap?.has("0,0")).not.toBe(true);
   });
 
-  it("TC-68: getButton は存在するボタンのみを返す", () => {
+  it("OBS-PANEL-ControlCore-TC-68: getButton は存在するボタンのみを返す", () => {
     const core = new ControlCore({
       obs: {} as any,
       http: {} as any,
@@ -2141,7 +2141,7 @@ describe("ControlCore", () => {
     expect(notFound2).toBeUndefined();
   });
 
-  it("TC-69: broadcaster が想定外形態でも emit は落ちない", () => {
+  it("OBS-PANEL-ControlCore-TC-69: broadcaster が想定外形態でも emit は落ちない", () => {
     const core = new ControlCore({
       obs: {} as any,
       http: {} as any,
@@ -2162,7 +2162,7 @@ describe("ControlCore", () => {
     expect((core as any).logger.error).not.toHaveBeenCalled();
   });
 
-  it("TC-70: updateStatusFromObs で getStatus が null を返した場合 OBS_STATUS_FAILED", async () => {
+  it("OBS-PANEL-ControlCore-TC-70: updateStatusFromObs で getStatus が null を返した場合 OBS_STATUS_FAILED", async () => {
     const msgs: any[] = [];
     const core = new ControlCore({
       obs: {
@@ -2190,7 +2190,7 @@ describe("ControlCore", () => {
     expect(errors[0].payload.message).toContain("no data");
   });
 
-  it("TC-71: execHttpAndReflectLabel で res が undefined の場合 label を更新しない", async () => {
+  it("OBS-PANEL-ControlCore-TC-71: execHttpAndReflectLabel で res が undefined の場合 label を更新しない", async () => {
     const sent: any[] = [];
     const core = new ControlCore({
       obs: {} as any,
@@ -2234,7 +2234,7 @@ describe("ControlCore", () => {
     expect(lastUpdate.payload.buttons[0].label).toBe("A");
   });
 
-  it("TC-72: currentPageKey undefined の場合 setDisplayLabel を呼ばない", async () => {
+  it("OBS-PANEL-ControlCore-TC-72: currentPageKey undefined の場合 setDisplayLabel を呼ばない", async () => {
     const send = vi.fn();
 
     const core = new ControlCore({
@@ -2287,7 +2287,7 @@ describe("ControlCore", () => {
     ]);
   });
 
-  it("TC-73: メッセージ経由 page.switch で page 未指定なら INVALID_ACTION", async () => {
+  it("OBS-PANEL-ControlCore-TC-73: メッセージ経由 page.switch で page 未指定なら INVALID_ACTION", async () => {
     const send = vi.fn();
     const core = new ControlCore({
       broadcaster: { send },
@@ -2309,7 +2309,7 @@ describe("ControlCore", () => {
     });
   });
 
-  it("TC-74: ボタン action.type 未指定なら INVALID_ACTION(action.type missing)", async () => {
+  it("OBS-PANEL-ControlCore-TC-74: ボタン action.type 未指定なら INVALID_ACTION(action.type missing)", async () => {
     const sent: any[] = [];
     const broadcaster = (msg: any) => {
       sent.push(msg);
@@ -2350,7 +2350,7 @@ describe("ControlCore", () => {
     expect(err!.payload.message).toBe("action.type missing");
   });
 
-  it("TC-75: メッセージ経由 http.get で url 未指定なら INVALID_ACTION", async () => {
+  it("OBS-PANEL-ControlCore-TC-75: メッセージ経由 http.get で url 未指定なら INVALID_ACTION", async () => {
     const { broadcaster, obs, http, sent } = createMocks();
 
     const core = new ControlCore({
@@ -2374,7 +2374,7 @@ describe("ControlCore", () => {
     expect(err!.payload.message).toBe("url missing");
   });
 
-  it("TC-76: メッセージ経由 http.post で url 未指定なら INVALID_ACTION", async () => {
+  it("OBS-PANEL-ControlCore-TC-76: メッセージ経由 http.post で url 未指定なら INVALID_ACTION", async () => {
     const { broadcaster, obs, http, sent } = createMocks();
 
     const core = new ControlCore({
@@ -2398,7 +2398,7 @@ describe("ControlCore", () => {
     expect(err!.payload.message).toBe("url missing");
   });
 
-  it("TC-77: メッセージ経由 http.get で例外なら HTTP_FAILED を送る", async () => {
+  it("OBS-PANEL-ControlCore-TC-77: メッセージ経由 http.get で例外なら HTTP_FAILED を送る", async () => {
     const { broadcaster, obs, http, sent } = createMocks();
 
     // http.get を reject させる
@@ -2427,7 +2427,7 @@ describe("ControlCore", () => {
     expect(err!.payload.message).toBe("boom");
   });
 
-  it("TC-78: opts.obs / opts.http 未指定でも {} で補完される", () => {
+  it("OBS-PANEL-ControlCore-TC-78: opts.obs / opts.http 未指定でも {} で補完される", () => {
     // obs/http を省略してコンストラクタを呼び出し、?? の右側を踏む
     const core = new ControlCore({
       broadcaster: { send: vi.fn() },
@@ -2448,7 +2448,7 @@ describe("ControlCore", () => {
     expect((core as any).http).toEqual({});
   });
 
-  it("TC-79: 非 main ページで label が省略された場合は空文字で正規化される", () => {
+  it("OBS-PANEL-ControlCore-TC-79: 非 main ページで label が省略された場合は空文字で正規化される", () => {
     const send = vi.fn();
     const core = new ControlCore({
       obs: {} as any,
@@ -2483,7 +2483,7 @@ describe("ControlCore", () => {
     expect(payload.buttons).toContainEqual({ x: 1, y: 2, label: "" });
   });
 
-  it("TC-80: payload プロパティ自体が無い場合でも INVALID_ACTION(page missing) になる", async () => {
+  it("OBS-PANEL-ControlCore-TC-80: payload プロパティ自体が無い場合でも INVALID_ACTION(page missing) になる", async () => {
     const send = vi.fn();
     const core = new ControlCore({
       obs: {} as any,
@@ -2513,7 +2513,7 @@ describe("ControlCore", () => {
     });
   });
 
-  it("TC-81: handleMessage 内で message を持たない例外が発生しても UNEXPECTED_ERROR にラップされる", async () => {
+  it("OBS-PANEL-ControlCore-TC-81: handleMessage 内で message を持たない例外が発生しても UNEXPECTED_ERROR にラップされる", async () => {
     const send = vi.fn();
     const logger = { error: vi.fn() };
     const core = new ControlCore({
@@ -2561,7 +2561,7 @@ describe("ControlCore", () => {
     expect(err.message).toBe("boom-toggle");
   });
 
-  it("TC-82: メッセージ経由 http.get で message を持たない例外でも HTTP_FAILED になる", async () => {
+  it("OBS-PANEL-ControlCore-TC-82: メッセージ経由 http.get で message を持たない例外でも HTTP_FAILED になる", async () => {
     const send = vi.fn();
     const httpGet = vi.fn().mockRejectedValue("boom-http-get");
 
@@ -2595,7 +2595,7 @@ describe("ControlCore", () => {
     });
   });
 
-  it("TC-83: メッセージ経由 http.post で message を持たない例外でも HTTP_FAILED になる", async () => {
+  it("OBS-PANEL-ControlCore-TC-83: メッセージ経由 http.post で message を持たない例外でも HTTP_FAILED になる", async () => {
     const send = vi.fn();
     const httpPost = vi.fn().mockRejectedValue("boom-http-post");
 
@@ -2629,7 +2629,7 @@ describe("ControlCore", () => {
     });
   });
 
-  it("TC-84: updateStatusFromObs で message を持たない例外でも OBS_STATUS_FAILED になる", async () => {
+  it("OBS-PANEL-ControlCore-TC-84: updateStatusFromObs で message を持たない例外でも OBS_STATUS_FAILED になる", async () => {
     const send = vi.fn();
     const core = new ControlCore({
       obs: {
@@ -2661,7 +2661,7 @@ describe("ControlCore", () => {
     });
   });
 
-  it("TC-85: ボタン経由 http.get で message を持たない例外でも HTTP_FAILED になる", async () => {
+  it("OBS-PANEL-ControlCore-TC-85: ボタン経由 http.get で message を持たない例外でも HTTP_FAILED になる", async () => {
     const send = vi.fn();
     const httpGet = vi.fn().mockRejectedValue("boom-http-button");
 
@@ -2707,7 +2707,7 @@ describe("ControlCore", () => {
     expect(err.message).toBe("boom-http-button");
   });
 
-  it("TC-86: execHttpAndReflectLabel data[displayKey] が undefined の場合は空文字で上書きされる", async () => {
+  it("OBS-PANEL-ControlCore-TC-86: execHttpAndReflectLabel data[displayKey] が undefined の場合は空文字で上書きされる", async () => {
     const send = vi.fn();
     const httpGet = vi.fn().mockResolvedValue({
       data: { value: undefined }, // プロパティはあるが内容が undefined → ?? "" の右側
@@ -2752,7 +2752,7 @@ describe("ControlCore", () => {
     expect(update.buttons).toContainEqual({ x: 4, y: 4, label: "" });
   });
 
-  it("TC-87: execHttpAndReflectLabel res[displayKey] が undefined の場合は空文字で上書きされる", async () => {
+  it("OBS-PANEL-ControlCore-TC-87: execHttpAndReflectLabel res[displayKey] が undefined の場合は空文字で上書きされる", async () => {
     const send = vi.fn();
     const httpGet = vi.fn().mockResolvedValue({
       // data プロパティ無し → res 本体から displayKey を参照
