@@ -34,14 +34,14 @@ OBS Dock UI と同じ JSON 定義・メッセージ仕様を使用し、
 
     ```json
     {
-    "type": "page.update",
-    "payload": {
-        "currentPage": "main",
-        "buttons": [
-        { "x": 0, "y": 0, "label": "LIVE", "state": "on" },
-        { "x": 1, "y": 0, "label": "REC" }
-        ]
-    }
+        "type": "page.update",
+        "payload": {
+            "currentPage": "main",
+            "buttons": [
+            { "x": 0, "y": 0, "label": "LIVE", "state": "on" },
+            { "x": 1, "y": 0, "label": "REC" }
+            ]
+        }
     }
     ```
 
@@ -52,11 +52,11 @@ OBS Dock UI と同じ JSON 定義・メッセージ仕様を使用し、
 
     ```json
     {
-    "type": "status.update",
-    "payload": {
-        "streaming": true,
-        "recording": false
-    }
+        "type": "status.update",
+        "payload": {
+            "streaming": true,
+            "recording": false
+        }
     }
     ```
 
@@ -67,11 +67,11 @@ OBS Dock UI と同じ JSON 定義・メッセージ仕様を使用し、
 
     ```json
     {
-    "type": "error",
-    "payload": {
-        "code": "INVALID_ACTION",
-        "message": "..."
-    }
+        "type": "error",
+        "payload": {
+            "code": "INVALID_ACTION",
+            "message": "..."
+        }
     }
     ```
 
@@ -83,13 +83,13 @@ OBS Dock UI と同じ JSON 定義・メッセージ仕様を使用し、
 
     ```json
     {
-    "type": "button.click",
-    "payload": {
-        "page": "<現在のページ名>",
-        "x": <keyX>,
-        "y": <keyY>,
-        "source": "streamdeck"
-    }
+        "type": "button.click",
+        "payload": {
+            "page": "<現在のページ名>",
+            "x": <keyX>,
+            "y": <keyY>,
+            "source": "streamdeck"
+        }
     }
     ```
 
