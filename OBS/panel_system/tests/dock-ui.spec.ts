@@ -14,7 +14,7 @@ class FakeWebSocket {
   // イベントハンドラ
   onopen: (() => void) | null = null;
   onclose: (() => void) | null = null;
-  onerror: (() => void) | null = null;
+  onerror: ((ev: any) => void) | null = null;
   onmessage: ((ev: { data: any }) => void) | null = null;
 
   constructor(url: string) {
@@ -46,7 +46,7 @@ class FakeWebSocket {
   }
 }
 
-describe("Dock UI (OBS-PANEL-Dock-TC-001〜004)", () => {
+describe("Dock UI (OBS-PANEL-Dock-TC-001〜008)", () => {
   let dispose: () => void;
 
   beforeEach(() => {
@@ -203,5 +203,89 @@ describe("Dock UI (OBS-PANEL-Dock-TC-001〜004)", () => {
     // エラー
     ws.onerror && ws.onerror(new Event("error") as any);
     expect(statusEl.textContent).toBe("ERROR");
+  });
+
+  it("OBS-PANEL-Dock-TC-005: page.update 以外のメッセージは無視される", () => {
+    const ws = getSocket();
+
+    // まず page.update でボタンを LIVE にしておく
+    ws.receive(
+      JSON.stringify({
+        type: "page.update",
+        payload: {
+          currentPage: "main",
+          buttons: [{ x: 0, y: 0, label: "LIVE" }],
+        },
+      })
+    );
+
+    const btn00 = document.querySelector(
+      'button[data-x="0"][data-y="0"]'
+    ) as HTMLButtonElement;
+    expect(btn00.textContent).toBe("LIVE");
+
+    // type が異なるメッセージを送る（page.update ではない）
+    ws.receive(
+      JSON.stringify({
+        type: "something-else",
+        payload: {
+          currentPage: "main",
+          buttons: [{ x: 0, y: 0, label: "CHANGED" }],
+        },
+      })
+    );
+
+    // ラベルは変更されない（page.update 以外は Dock UI が無視する）
+    expect(btn00.textContent).toBe("LIVE");
+  });
+
+  it("OBS-PANEL-Dock-TC-006: data が null のメッセージは無視される", () => {
+    const ws = getSocket();
+
+    // null メッセージを送っても例外なく無視されること
+    expect(() => {
+      ws.receive(null as any);
+    }).not.toThrow();
+
+    // grid が空のままであることを軽く確認（全ボタン disabled のまま）
+    const anyBtn = document.querySelector(
+      'button[data-x="0"][data-y="0"]'
+    ) as HTMLButtonElement;
+    expect(anyBtn.classList.contains("disabled")).toBe(true);
+    expect(anyBtn.textContent).toBe("");
+  });
+
+  it("OBS-PANEL-Dock-TC-007: 非文字列メッセージ & JSON パース失敗は無視される", () => {
+    const ws = getSocket();
+
+    // 非文字列（オブジェクト）を送り、toString() → JSON.parse 失敗の catch 経路を通す
+    expect(() => {
+      ws.receive({ foo: "bar" } as any);
+    }).not.toThrow();
+
+    // その結果として DOM に変化がない（全ボタン disabled のまま）ことを確認
+    const anyBtn = document.querySelector(
+      'button[data-x="0"][data-y="0"]'
+    ) as HTMLButtonElement;
+    expect(anyBtn.classList.contains("disabled")).toBe(true);
+    expect(anyBtn.textContent).toBe("");
+  });
+
+  it("OBS-PANEL-Dock-TC-008: .btn 以外のクリックでは button.click を送信しない", () => {
+    const ws = getSocket();
+    const grid = document.getElementById("grid")!;
+
+    // グリッド内に .btn ではない要素を追加
+    const other = document.createElement("div");
+    other.id = "not-a-button";
+    grid.appendChild(other);
+
+    const sendSpy = vi.spyOn(ws, "send");
+
+    // .btn でない要素をクリック
+    other.click();
+
+    // button.click は送信されない
+    expect(sendSpy).not.toHaveBeenCalled();
   });
 });
