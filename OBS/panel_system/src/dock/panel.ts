@@ -29,6 +29,11 @@ interface PageUpdatePayload {
     x: number;
     y: number;
     label?: string;
+    /**
+     * オプションのボタン画像名。
+     * Control Core から page.update で渡される。
+     */
+    image?: string;
   }>;
 }
 
@@ -134,6 +139,7 @@ export function initDockUi(
       for (const cell of row) {
         cell.button.className = "btn disabled";
         cell.button.textContent = "";
+        delete cell.button.dataset.image;
       }
     }
 
@@ -146,6 +152,9 @@ export function initDockUi(
       const cell = cells[y][x];
       cell.button.className = "btn";
       cell.button.textContent = label ?? "";
+      if (image) {
+        cell.button.dataset.image = image;
+      }
     }
   };
 

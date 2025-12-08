@@ -25,6 +25,7 @@ export type RawButtonConfig = {
   y: number;
   label?: string;
   action?: any; // ボタンアクション（単体 or 配列）
+  image?: string;
 };
 
 export type RawPageConfig = {
@@ -44,7 +45,12 @@ export type Button = {
   x: number;
   y: number;
   label: string;
-  action: any; // 単体/配列は onButtonClick 側で吸収
+  action: ButtonAction;
+  /**
+   * オプションのボタン画像。
+   * main ページなどのコンフィグで固定画像を指定する用途。
+   */
+  image?: string;
 };
 
 // broadcaster は 3 パターンを許容
@@ -172,23 +178,9 @@ export class ControlCore {
 
     this.initialized = true;
 
-    // 初期 page.update の送信可否は broadcaster の形態と pages 構成で分岐
-    const b = this.broadcaster;
-    const hasSend = b && typeof (b as any).send === "function";
-    const isFnLike =
-      typeof b === "function" || (b && typeof (b as any).broadcaster === "function");
-
-    if (hasSend) {
-      // createMocks パターン: 常に初期 page.update を送る（TC-01, 28 他）
+    // 初期 page.update は broadcaster が存在する場合は必ず 1 回送る
+    if (this.broadcaster) {
       this.pushPageUpdate();
-    } else if (isFnLike) {
-      // mkDeps パターン:
-      // - main が存在する構成では初期 page.update を送らない（TC-32）
-      // - main が無い構成では「最初のページ」をデフォルトとして送る（TC-28）
-      const hasMain = Object.prototype.hasOwnProperty.call(pages, "main");
-      if (!hasMain) {
-        this.pushPageUpdate();
-      }
     }
   }
 
@@ -322,6 +314,7 @@ export class ControlCore {
       y: b.y,
       label: b.label ?? "",
       action: b.action,
+      image: (b as any).image,
     }));
     return { key, buttons };
   }
@@ -366,7 +359,14 @@ export class ControlCore {
     const buttons = page.buttons.map((b) => {
       const k = `${b.x},${b.y}`;
       const label = overrides.get(k) ?? b.label;
-      return { x: b.x, y: b.y, label };
+      // image はコンフィグ固定の値をそのまま載せる。
+      // undefined の場合はプロパティ自体を付けない（Dock UI 側の dataset.image は未定義になる）。
+      return {
+        x: b.x,
+        y: b.y,
+        label,
+        ...(b.image ? { image: b.image } : {}),
+      };
     });
 
     this.emit("page.update", {
