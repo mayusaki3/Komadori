@@ -46,7 +46,7 @@ class FakeWebSocket {
   }
 }
 
-describe("Dock UI (OBS-PANEL-Dock-TC-001〜008)", () => {
+describe("Dock UI (OBS-PANEL-Dock-TC-001〜005 / TC-Impl_xxx)", () => {
   let dispose: () => void;
 
   beforeEach(() => {
@@ -205,7 +205,40 @@ describe("Dock UI (OBS-PANEL-Dock-TC-001〜008)", () => {
     expect(statusEl.textContent).toBe("ERROR");
   });
 
-  it("OBS-PANEL-Dock-TC-005: page.update 以外のメッセージは無視される", () => {
+  it("OBS-PANEL-Dock-TC-005: page.update の image をボタンに反映する", () => {
+    const ws = getSocket();
+
+    ws.receive(
+      JSON.stringify({
+        type: "page.update",
+        payload: {
+          currentPage: "main",
+          buttons: [
+            { x: 0, y: 0, label: "LIVE", image: "live.png" },
+            { x: 1, y: 0, label: "REC" }, // image 未指定
+          ],
+        },
+      }),
+    );
+
+    const btn00 = document.querySelector(
+      'button[data-x="0"][data-y="0"]',
+    ) as HTMLButtonElement | null;
+    const btn10 = document.querySelector(
+      'button[data-x="1"][data-y="0"]',
+    ) as HTMLButtonElement | null;
+
+    expect(btn00).not.toBeNull();
+    expect(btn10).not.toBeNull();
+
+    // image 指定あり → data-image に反映される
+    expect(btn00!.dataset.image).toBe("live.png");
+
+    // image 指定なし → data-image は未設定
+    expect(btn10!.dataset.image).toBeUndefined();
+  });
+
+  it("OBS-PANEL-Dock-TC-Impl_001: page.update 以外のメッセージは無視される", () => {
     const ws = getSocket();
 
     // まず page.update でボタンを LIVE にしておく
@@ -239,7 +272,7 @@ describe("Dock UI (OBS-PANEL-Dock-TC-001〜008)", () => {
     expect(btn00.textContent).toBe("LIVE");
   });
 
-  it("OBS-PANEL-Dock-TC-006: data が null のメッセージは無視される", () => {
+  it("OBS-PANEL-Dock-TC-Impl_002: data が null のメッセージは無視される", () => {
     const ws = getSocket();
 
     // null メッセージを送っても例外なく無視されること
@@ -255,7 +288,7 @@ describe("Dock UI (OBS-PANEL-Dock-TC-001〜008)", () => {
     expect(anyBtn.textContent).toBe("");
   });
 
-  it("OBS-PANEL-Dock-TC-007: 非文字列メッセージ & JSON パース失敗は無視される", () => {
+  it("OBS-PANEL-Dock-TC-Impl_003: 非文字列メッセージ & JSON パース失敗は無視される", () => {
     const ws = getSocket();
 
     // 非文字列（オブジェクト）を送り、toString() → JSON.parse 失敗の catch 経路を通す
@@ -271,7 +304,7 @@ describe("Dock UI (OBS-PANEL-Dock-TC-001〜008)", () => {
     expect(anyBtn.textContent).toBe("");
   });
 
-  it("OBS-PANEL-Dock-TC-008: .btn 以外のクリックでは button.click を送信しない", () => {
+  it("OBS-PANEL-Dock-TC-Impl_004: .btn 以外のクリックでは button.click を送信しない", () => {
     const ws = getSocket();
     const grid = document.getElementById("grid")!;
 

@@ -5,10 +5,10 @@
 本ドキュメントは、OBS パネルシステムの Core ロジック（ControlCore）に対する  
 **外部仕様として保証すべきテストケース** を記載する。
 
-以下に示す **OBS-PANEL-ControlCore-TC-001〜032** は  
+以下に示す **OBS-PANEL-ControlCore-TC-001〜033** は  
 ControlCore の外部公開仕様であり、**削除・弱体化・省略を禁止**する。
 
-TC-033 以降は実装依存テストのため本ドキュメントには記載しない。
+TC-Impl_001 以降は実装依存テストのため本ドキュメントには記載しない。
 
 ---
 
@@ -141,23 +141,61 @@ TC-033 以降は実装依存テストのため本ドキュメントには記載�
 
 ### **OBS-PANEL-ControlCore-TC-032: currentPageKey 不正 → pushPageUpdate は送信しない**
 
+### **OBS-PANEL-ControlCore-TC-033: ボタン定義の image を page.update に含める**
+
+- 種別  
+  - 外部仕様テスト
+
+- 目的  
+  - ページ定義に `image` フィールドが存在する場合、Control Core が送出する `page.update` の `buttons[*].image` に正しく反映されることを確認する。
+
+- 前提  
+  - 設定ファイルの `pages.main.buttons` に、以下のようなボタン定義を含める。  
+    - 例: `{ x: 0, y: 0, label: "LIVE", image: "live.png", action: { ... } }`
+  - Control Core の `initialize()` が正常終了している。
+
+- 手順  
+  1. `initialize()` を実行する。  
+  2. 初回、または `pushPageUpdate()` により送出される `page.update` メッセージを取得する。
+
+- 期待結果  
+  - 取得した `page.update` の `payload.buttons` のうち、`x=0`, `y=0` に対応する要素が以下を満たす。  
+    - `label: "LIVE"`  
+    - `image: "live.png"`  
+  - `image` の値が設定ファイルのボタン定義と一致している。
+
 ---
 
 ## 4. 保守ポリシー（重要）
 
-- **OBS-PANEL-ControlCore-TC-001〜032 は外部仕様であり変更禁止。**  
-  仕様変更時のみ、仕様と同一ブランチで更新する。
+### 4.1 テスト ID の区分
 
-- **TC-033 以降は実装依存テストとして control-core.spec.ts を一次ソースとする。**  
-  実装変更に伴う差し替えを許容する。
+- **外部仕様テスト**
+  - テスト ID: `OBS-PANEL-ControlCore-TC-***`
+  - Control Core の外部 I/F（メッセージ仕様・エラーコード・状態遷移）として保証すべきテスト。
+  - 仕様変更以外の理由で「削除・弱体化・省略」してはならない。
 
-- 常に保証すべき動作：
-  - HTTP/OBS の例外 → 正しいエラーコードを返すこと  
-  - INVALID_ACTION / INVALID_PAGE / NOT_INITIALIZED が破壊されないこと  
-  - displayKey ラベル更新のロジックが正しく動作すること  
+- **実装依存テスト**
+  - テスト ID: `OBS-PANEL-ControlCore-TC-Impl_***`
+  - 実装詳細（最適化・ガード分岐・内部キャッシュなど）を対象とするテスト。
+  - 実装変更に合わせた差し替えを許容するが、テストコード側が一次ソースとなる。
 
-- カバレッジ 100%（行・分岐）は実装依存テストの判断基準とする。  
-  ただし **カバレッジ目的のテスト弱体化は禁止**。
+### 4.2 常に保証すべき動作
+
+外部仕様テストでは、少なくとも以下を保証する。
+
+- メッセージ種別ごとの基本動作
+  - 正常系: `page.update` / `button.click` / `status.update` などが仕様どおり送出されること
+  - エラー系: 無効なページ / アクションに対して `INVALID_PAGE` / `INVALID_ACTION` / `NOT_INITIALIZED` 等のエラーが返ること
+- メッセージ形式
+  - 必須フィールド（`type`, `payload`, `payload.page`, `payload.buttons` 等）が欠落しないこと
+  - 追加されたフィールド（例: `buttons[*].image`）も含め、仕様で定めた型・キー名を守ること
+
+### 4.3 カバレッジ方針
+
+- Control Core は、行・分岐ともに **100% カバレッジを目標**とする。
+- ただし、**カバレッジ達成を目的としたテスト弱体化は禁止**とし、外部仕様テストを優先する。
+- 実装依存テスト（`…-TC-Impl_***`）でガード分岐や最適化を補完する。
 
 ---
 [目次](../../目次.md) > [OBS 関連ドキュメント インデックス](../../index.md) > Control Core 単体テストケース定義

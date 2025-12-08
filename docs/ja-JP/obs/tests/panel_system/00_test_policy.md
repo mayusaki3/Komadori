@@ -22,8 +22,8 @@ OBS パネルシステムは次の 3 レイヤに分けてテストする。
 - 外部公開動作の保証が必要
 
 → テストID体系：  
-**OBS-PANEL-ControlCore-TC-001〜032（外部仕様テスト・変更禁止）**  
-**TC-033 以降（実装依存テスト・変更可）**
+**OBS-PANEL-ControlCore-TC-001〜（外部仕様テスト・変更禁止）**  
+**OBS-PANEL-ControlCore-TC-Impl_001〜（実装依存テスト・変更可）**
 
 ### 1.2 Dock UI
 - page.update による DOM 表示制御  
@@ -31,7 +31,8 @@ OBS パネルシステムは次の 3 レイヤに分けてテストする。
 - 表示状態（接続／エラー）の反映  
 
 → テストID体系：  
-**OBS-PANEL-Dock-TC-001〜**
+**OBS-PANEL-Dock-TC-001〜（外部仕様テスト・変更禁止）**  
+**OBS-PANEL-Dock-TC-Impl_001〜（実装依存テスト・変更可）**
 
 ### 1.3 Stream Deck プラグイン
 - page.update → キー表示更新  
@@ -39,14 +40,15 @@ OBS パネルシステムは次の 3 レイヤに分けてテストする。
 - 接続状態ハンドリング  
 
 → テストID体系：  
-**OBS-PANEL-StreamDeck-TC-001〜**
+**OBS-PANEL-StreamDeck-TC-001〜（外部仕様テスト・変更禁止）**  
+**OBS-PANEL-StreamDeck-TC-Impl_001〜（実装依存テスト・変更可）**
 
 ---
 
-## 2. テスト分類（最重要）
+## 2. テスト分類（最重要）※ Control Core テストを例に説明する
 
 ### 2.1 外部仕様テスト（変更禁止）
-Control Core に対する **OBS-PANEL-ControlCore-TC-001〜032** は  
+Control Core に対する **OBS-PANEL-ControlCore-TC-001〜** は  
 パネルシステムの **外部仕様そのものであり、改変・削除は禁止する。**
 
 これらは以下を含む：
@@ -66,7 +68,7 @@ Control Core に対する **OBS-PANEL-ControlCore-TC-001〜032** は
 ---
 
 ### 2.2 実装依存テスト（変更可）
-Control Core の **TC-033 以降** は、  
+Control Core に対する **OBS-PANEL-ControlCore-TC-Impl_001〜** は  
 **実装依存の枝分岐網羅・例外経路・内部条件分岐を対象とした補助テスト** とする。
 
 特徴：
@@ -86,7 +88,7 @@ Control Core の **TC-033 以降** は、
 
 ### 3.1 Control Core
 - **行（Stmt）／分岐（Branch）ともに 100% 必須**
-- カバレッジ達成のため TC-033 以降を柔軟に構成してよい
+- カバレッジ達成のため TC-Impl_001 以降を柔軟に構成してよい
 - **カバレッジ目的のテスト弱体化は禁止**
 
 ### 3.2 Dock UI / Stream Deck
@@ -126,5 +128,4 @@ Control Core の **TC-033 以降** は、
   → 実装依存テストは仕様書に含めない
 
 ---
-
 [目次](../../目次.md) > [OBS 関連ドキュメント インデックス](../../index.md) > パネルシステムの単体テスト・結合テスト方針とケース定義

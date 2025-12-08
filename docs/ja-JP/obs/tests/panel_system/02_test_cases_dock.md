@@ -37,7 +37,7 @@ Dock UI について、以下は「外部仕様」として扱う。
 - 未定義セルの扱い（クリック不可・視覚的な無効状態）
 - 接続状態表示（CONNECTED / DISCONNECTED - RETRYING / ERROR）
 
-これらのテストは **OBS-PANEL-Dock-TC-001〜004** として定義し、  
+これらのテストは **OBS-PANEL-Dock-TC-001〜** として定義し、  
 仕様変更時以外の削除・改変を禁止する。
 
 ### 3.2 実装依存テスト（変更可能）
@@ -45,7 +45,7 @@ Dock UI について、以下は「外部仕様」として扱う。
 上記以外の Dock UI テスト（例: 想定外メッセージの無視、再描画時のクリーンアップ、  
 内部的な guard 分岐 など）は **実装依存テスト** として扱う。
 
-- テスト ID は `OBS-PANEL-Dock-TC-XXX` 系を想定する。
+- テスト ID は `OBS-PANEL-Dock-TC-Impl_***` 系を用いる。
 - これらは `dock-ui.spec.ts` を一次ソースとし、  
   実装変更に伴い自由に差し替えてよい。
 
@@ -109,9 +109,28 @@ Dock UI について、以下は「外部仕様」として扱う。
 
 ---
 
+### OBS-PANEL-Dock-TC-005: page.update の image を Dock UI アイコン表示に反映する
+
+- 種別  
+  - 外部仕様テスト
+
+- 条件:
+  - `currentPage = "main"`
+  - `buttons` に `(x=0, y=0, label="LIVE", image="live.png")` を含む
+
+- 手順:
+  - 疑似 WebSocket から `page.update` を Dock UI に送信する。
+
+- 確認:
+  - `(0,0)` セルにラベル "LIVE" が表示される。
+  - 同セルに image で指定したアイコン（例: `<img src="live.png">`）が表示される。
+  - image 未指定セルにはアイコンが表示されない。
+
+---
+
 ## 5. 実装依存テストの例（任意・カバレッジ向上用）
 
-以下は **実装依存テスト（OBS-PANEL-Dock-TC-XXX）** の例であり、  
+以下は **実装依存テスト（OBS-PANEL-Dock-TC-Impl_001～）** の例であり、  
 実際のテストコードは `dock-ui.spec.ts` を一次ソースとして管理する。
 
 これらのテストは、
@@ -124,7 +143,7 @@ Dock UI について、以下は「外部仕様」として扱う。
 
 ---
 
-### OBS-PANEL-Dock-TC-005: 文字列引数での Dock UI 初期化
+### OBS-PANEL-Dock-TC-Impl_001: 文字列引数での Dock UI 初期化
 
 - 目的:  
   `initDockUi("ws://...")` のように WebSocket URL を文字列で渡した場合でも、  
@@ -142,7 +161,7 @@ Dock UI について、以下は「外部仕様」として扱う。
 
 ---
 
-### OBS-PANEL-Dock-TC-006: グリッド範囲外座標のボタン定義は無視される
+### OBS-PANEL-Dock-TC-Impl_002: グリッド範囲外座標のボタン定義は無視される
 
 - 目的:  
   `page.update.buttons` にグリッド範囲外の `(x,y)` が含まれていても、  
@@ -198,8 +217,8 @@ Control Core に比べて **カバレッジ 100% を必須としない** 方針�
 
 以上より、Dock UI については:
 
-- **外部仕様テスト（OBS-PANEL-Dock-TC-001〜004）** を維持することを最優先とし、
-- 残りの分岐は **実装依存テスト（OBS-PANEL-Dock-TC-XXX）** で必要に応じてカバーする。
+- **外部仕様テスト（OBS-PANEL-Dock-TC-001〜）** を維持することを最優先とし、
+- 残りの分岐は **実装依存テスト（OBS-PANEL-Dock-TC-Impl_001～）** で必要に応じてカバーする。
 
 ## 7. 現時点のカバレッジ参考値（記録用）
 

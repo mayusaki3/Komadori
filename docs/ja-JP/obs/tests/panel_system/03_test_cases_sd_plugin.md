@@ -15,7 +15,7 @@ Stream Deck プラグインが Control Core のメッセージ仕様に従い、
 
 ## 3. テストケース一覧
 
-### SD-01: page.update によるキー表示更新
+### OBS-PANEL-StreamDeck-TC-001: page.update によるキー表示更新
 
 - 入力:
   - `type: "page.update"`
@@ -26,14 +26,14 @@ Stream Deck プラグインが Control Core のメッセージ仕様に従い、
 - 確認:
   - 該当キーのタイトルが "LIVE" に更新される。
 
-### SD-02: 未定義キーの扱い
+### OBS-PANEL-StreamDeck-TC-002: 未定義キーの扱い
 
 - 入力:
   - 一部座標のみ `buttons` に含まれる。
 - 確認:
   - 対応する定義が無いキーは空表示（タイトル/アイコンなし）。
 
-### SD-03: キー押下 → button.click 送信
+### OBS-PANEL-StreamDeck-TC-003: キー押下 → button.click 送信
 
 - 状態:
   - 直前の `page.update.currentPage = "main"`.
@@ -49,7 +49,7 @@ Stream Deck プラグインが Control Core のメッセージ仕様に従い、
     - `payload.source = "streamdeck"`
     を満たす。
 
-### SD-04: ページ切替の同期
+### OBS-PANEL-StreamDeck-TC-004: ページ切替の同期
 
 - 入力:
   - `page.update` (currentPage="main") を受信後、
@@ -59,13 +59,34 @@ Stream Deck プラグインが Control Core のメッセージ仕様に従い、
 - 確認（本テスト観点）:
   - プラグインは新しい `page.update.currentPage` に従いキー表示を更新する。
 
-### SD-05: 接続エラー時の挙動
+### OBS-PANEL-StreamDeck-TC-005: 接続エラー時の挙動
 
 - 条件:
   - WebSocket 接続失敗 or 切断。
 - 確認:
   - プラグイン内部ステータスが「未接続」を示す状態に遷移する。
   - 自動再接続を試行する（試行間隔は実装依存）。
+
+### OBS-PANEL-StreamDeck-TC-006: page.update の image を setImage に反映する
+
+- 種別  
+  - 外部仕様テスト
+
+- 目的  
+  - Control Core からの `page.update.buttons[*].image` に指定された値が、Stream Deck SDK の `setImage` に正しく渡されることを確認する。
+
+- 前提  
+  - プラグインは接続済み。  
+  - `page.update` で以下のボタン定義を受信する。  
+    - 例: `{ x: 0, y: 0, label: "LIVE", image: "live.png" }`
+
+- 手順  
+  1. プラグインのメッセージハンドラに上記 `page.update` を渡す。  
+  2. SDK モックの `setImage` 呼び出しを検査する。
+
+- 期待結果  
+  - 対象キー（(0,0)）に対して `setImage(keyId, "live.png")` が 1 回呼び出される。  
+  - 既存仕様通り、必要であれば `setTitle(keyId, "LIVE")` も呼び出されている。
 
 ---
 [目次](../../目次.md) > [OBS 関連ドキュメント インデックス](../../index.md) > Stream Deck プラグイン 単体テストケース定義
