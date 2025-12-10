@@ -1,197 +1,237 @@
-// OBS/panel_system/src/streamdeck/core.ts
-
 /**
- * Stream Deck プラグイン側のコアロジック。
- *
- * 役割:
- * - Control Core からの page.update を受けて、Stream Deck のキー表示（ラベル / 画像）を更新する。
- * - Stream Deck のボタン押下を Control Core の button.click メッセージに変換して送信する。
- *
- * 注意:
- * - Elgato 純正 SDK / WebSocket とは切り離し、テストでモック可能な I/F のみを提供する。
- * - 実際の SDK ラッパー側からは、本モジュールの公開関数を呼び出すだけにする。
+ * Stream Deck 向けパネルコア実装。
+ * page.update メッセージに応じてキー表示を更新し、
+ * キー押下時に button.click メッセージをコアへ送信する。
  */
 
-/**
- * Control Core とのメッセージプロトコル（必要最小限）。
- */
-export type CoreMessage =
-  | {
-      type: "page.update";
-      payload: {
-        currentPage: string;
-        buttons: {
-          x: number;
-          y: number;
-          label: string;
-          image?: string;
-        }[];
-      };
-    }
-  | {
-      type: "status";
-      payload: {
-        status: "CONNECTED" | "DISCONNECTED" | "ERROR";
-      };
-    }
-  // その他のメッセージ型は必要に応じて追加
-  | {
-      type: string;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      payload?: any;
-    };
+export type PageUpdateButton = {
+  x: number;
+  y: number;
+  label?: string;
+  image?: string;
+};
 
-/**
- * Stream Deck コアに注入する依存関係。
- * すべてテスト時にモック可能とする。
- */
-export type StreamDeckCoreDeps = {
-  /**
-   * Control Core へメッセージを送信するコールバック。
-   * 実際には WebSocket や Stream Deck の sendToPlugin などに対応させる。
-   */
-  sendToCore: (message: CoreMessage | { type: "button.click"; payload: { page: string | null; x: number; y: number } }) => void;
+export type PageUpdatePayload = {
+  currentPage: string;
+  buttons: PageUpdateButton[];
+};
 
-  /**
-   * 指定座標のキー表示を更新する。
-   * テストではモック化し、呼び出し回数や引数を検証する。
-   */
-  updateKey: (args: { x: number; y: number; label: string; image?: string }) => void;
+export type PageUpdateMessage = {
+  type: "page.update";
+  payload: PageUpdatePayload;
+};
 
-  /**
-   * 行数・列数。
-   * レイアウトチェックや範囲外防止に使用する。
-   */
-  rows: number;
-  cols: number;
+export type ConnectionStatus = "disconnected" | "connected" | "error";
+
+export type ButtonClickPayload = {
+  page: string;
+  x: number;
+  y: number;
+};
+
+export type ButtonClickMessage = {
+  type: "button.click";
+  payload: ButtonClickPayload;
 };
 
 /**
- * Stream Deck コアが外部に提供する I/F。
+ * StreamDeck SDK から渡されるキー更新関数。
+ * index は 0〜 rows*cols-1 のキー番号。
+ * title はキー上に表示するテキスト。
+ * image はキーに表示する画像パス（任意）。
+ */
+export type UpdateKeyFn = (index: number, title: string, image?: string) => void;
+
+/**
+ * コア → OBS パネル側への送信関数など、デッキ依存の情報。
+ */
+export type StreamDeckCoreDeps = {
+  rows: number;
+  cols: number;
+  updateKey: UpdateKeyFn;
+  sendToCore: (msg: ButtonClickMessage) => void;
+};
+
+/**
+ * テストが期待する Stream Deck Core の公開インターフェース。
  */
 export type StreamDeckCore = {
   /**
-   * Control Core からのメッセージを処理する。
-   * JSON 文字列またはオブジェクトのどちらでも受け付ける。
+   * page.update メッセージを直接適用するユーティリティ。
+   * テストではここを直接叩いてキー表示の状態を検証する。
    */
-  handleCoreMessage: (message: string | CoreMessage) => void;
+  applyPageUpdate: (msg: PageUpdateMessage) => void;
 
   /**
-   * Stream Deck のキー押下イベントを処理する。
-   * SDK ラッパー側から呼び出す想定。
+   * コアからの汎用メッセージを処理する。
+   * 実運用では WebSocket から流れてきたメッセージをここに渡す想定。
    */
-  handleKeyDown: (x: number, y: number) => void;
+  handleCoreMessage: (msg: unknown) => void;
 
   /**
-   * 現在のページキーを取得する（テスト / デバッグ用）。
+   * キー押下イベントハンドラ。
+   * keyIndex は 0〜 rows*cols-1 のキー番号。
    */
-  getCurrentPage: () => string | null;
+  handleKeyDown: (keyIndex: number) => void;
+
+  /**
+   * 現在アクティブなページキー（page.update.currentPage）を返す。
+   */
+  getCurrentPage: () => string | undefined;
+
+  /**
+   * 接続状態（簡易） getter / setter。
+   * テストでは get → 初期値 / set → 反映 だけを確認する。
+   */
+  getConnectionStatus: () => ConnectionStatus;
+  setConnectionStatus: (status: ConnectionStatus) => void;
 };
 
 /**
- * Stream Deck コアを生成するファクトリ関数。
+ * StreamDeckCore を生成するファクトリ。
+ * テストでは createStreamDeckCore(...) を呼んで core を取得する。
  */
 export function createStreamDeckCore(deps: StreamDeckCoreDeps): StreamDeckCore {
-  const { sendToCore, updateKey, rows, cols } = deps;
+  const { rows, cols, updateKey, sendToCore } = deps;
 
-  // 現在のページキーと、直近の page.update のボタン一覧を保持する。
-  let currentPage: string | null = null;
-  let lastButtons: { x: number; y: number; label: string; image?: string }[] = [];
+  // 現在ページキー（例: "main" / "util"）
+  let currentPage: string | undefined;
 
-  /**
-   * 座標が Stream Deck の範囲内か判定する。
-   */
-  function isValidCoord(x: number, y: number): boolean {
-    if (!Number.isInteger(x) || !Number.isInteger(y)) return false;
-    if (x < 0 || y < 0) return false;
-    if (x >= cols || y >= rows) return false;
-    return true;
-  }
+  // 接続状態（テスト用の簡易状態）
+  let connectionStatus: ConnectionStatus = "disconnected";
+
+  // 現在のページに対するボタン定義のグリッド
+  const buttonGrid: (PageUpdateButton | undefined)[][] = Array.from(
+    { length: rows },
+    () => Array.from({ length: cols }, () => undefined),
+  );
 
   /**
-   * page.update を受け取ったときの処理。
-   * 全キーの表示を更新する。
+   * ペイロード部分を適用する内部ヘルパー。
+   * handleCoreMessage / core.applyPageUpdate の両方から利用する。
    */
-  function applyPageUpdate(payload: CoreMessage["payload"] & { currentPage: string; buttons: { x: number; y: number; label: string; image?: string }[] }) {
-    currentPage = payload.currentPage;
-    lastButtons = payload.buttons ?? [];
-
-    // まず全キーをクリア
-    for (let y = 0; y < rows; y += 1) {
-      for (let x = 0; x < cols; x += 1) {
-        updateKey({ x, y, label: "", image: undefined });
-      }
-    }
-
-    // 受け取ったボタン定義を反映
-    for (const btn of lastButtons) {
-      const { x, y, label, image } = btn;
-      if (!isValidCoord(x, y)) continue;
-
-      updateKey({ x, y, label, image });
-    }
-  }
-
-  /**
-   * Control Core から受信したメッセージを処理する。
-   */
-  function handleCoreMessage(message: string | CoreMessage): void {
-    let msg: CoreMessage;
-
-    if (typeof message === "string") {
-      try {
-        msg = JSON.parse(message) as CoreMessage;
-      } catch {
-        // パースできないメッセージは無視
-        return;
-      }
-    } else {
-      msg = message;
-    }
-
-    if (!msg || typeof msg.type !== "string") return;
-
-    switch (msg.type) {
-      case "page.update":
-        applyPageUpdate(msg.payload as any);
-        break;
-      case "status":
-        // 必要であればステータスに応じてキー表示を変えるなどの処理を追加
-        break;
-      default:
-        // その他のメッセージは現状何もしない
-        break;
-    }
-  }
-
-  /**
-   * Stream Deck のキー押下を Control Core の button.click に変換する。
-   */
-  function handleKeyDown(x: number, y: number): void {
-    if (!isValidCoord(x, y)) {
+  const applyPageUpdatePayload = (payload: PageUpdatePayload) => {
+    if (!payload || !Array.isArray(payload.buttons)) {
       return;
     }
 
-    // currentPage が無ければ押下は無視（まだ page.update を受け取っていない状態）
-    const page = currentPage;
+    const { currentPage: newPage, buttons } = payload;
 
-    sendToCore({
+    if (typeof newPage === "string" && newPage.length > 0) {
+      currentPage = newPage;
+    }
+
+    // 1) すべてのキー表示をクリア
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
+        buttonGrid[y][x] = undefined;
+        const index = y * cols + x;
+        updateKey(index, "", undefined);
+      }
+    }
+
+    // 2) 有効なボタン定義だけを反映
+    for (const def of buttons) {
+      if (!def) continue;
+
+      const x = Number(def.x);
+      const y = Number(def.y);
+
+      if (
+        !Number.isFinite(x) ||
+        !Number.isFinite(y) ||
+        y < 0 ||
+        y >= rows ||
+        x < 0 ||
+        x >= cols
+      ) {
+        // グリッド外定義は無視（TC-002 想定）
+        continue;
+      }
+
+      const label = def.label ?? "";
+      const image = def.image;
+
+      buttonGrid[y][x] = { x, y, label, image };
+
+      const index = y * cols + x;
+      updateKey(index, label, image);
+    }
+  };
+
+  /**
+   * 公開用: PageUpdateMessage を直接適用する。
+   * テストではここを叩いて page.update によるキー表示更新・ページ切替を確認する。
+   */
+  const applyPageUpdate = (msg: PageUpdateMessage) => {
+    if (!msg || msg.type !== "page.update") return;
+    applyPageUpdatePayload(msg.payload);
+  };
+
+  /**
+   * コアからの汎用メッセージを処理するハンドラ。
+   * 現時点では page.update のみを扱う。
+   */
+  const handleCoreMessage = (msg: unknown) => {
+    const m = msg as { type?: string; payload?: PageUpdatePayload } | null | undefined;
+    if (!m || typeof m.type !== "string") return;
+
+    if (m.type === "page.update") {
+      if (m.payload) {
+        applyPageUpdatePayload(m.payload);
+      }
+    }
+    // 将来の拡張用: 他のメッセージ種別が来た場合は無視
+  };
+
+  /**
+   * キー押下イベント。
+   * rows * cols の 1D インデックスから x,y を求め、該当ボタンがあれば button.click を送信する。
+   */
+  const handleKeyDown = (keyIndex: number) => {
+    if (!Number.isFinite(keyIndex)) return;
+    if (keyIndex < 0 || keyIndex >= rows * cols) return;
+
+    const x = keyIndex % cols;
+    const y = Math.floor(keyIndex / cols);
+
+    const def = buttonGrid[y]?.[x];
+    if (!def) {
+      // 定義がないキーは何もしない（TC-002 想定）
+      return;
+    }
+
+    const page = currentPage ?? "main";
+
+    const msg: ButtonClickMessage = {
       type: "button.click",
-      payload: {
-        page,
-        x,
-        y,
-      },
-    });
-  }
+      payload: { page, x, y },
+    };
 
-  function getCurrentPage(): string | null {
-    return currentPage;
-  }
+    sendToCore(msg);
+  };
+
+  /**
+   * 現在のページキーを返す。
+   */
+  const getCurrentPage = (): string | undefined => currentPage;
+
+  /**
+   * 接続状態 getter / setter。
+   * テストでは単純に状態の保存・取得のみ確認する。
+   */
+  const getConnectionStatus = (): ConnectionStatus => connectionStatus;
+
+  const setConnectionStatus = (status: ConnectionStatus) => {
+    connectionStatus = status;
+  };
 
   return {
+    applyPageUpdate,
     handleCoreMessage,
     handleKeyDown,
     getCurrentPage,
+    getConnectionStatus,
+    setConnectionStatus,
   };
 }

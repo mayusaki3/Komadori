@@ -975,14 +975,29 @@ describe("Control-Core (OBS-PANEL-ControlCore-TC-001〜033 / TC-Impl_xxx)", () =
         },
       },
     });
+
     const { obs, http, broadcaster, logger, sent } = mkDeps();
-    const core: any = new ControlCore({ obs, http, broadcaster, logger, configPath: cfgPath });
+    const core: any = new ControlCore({
+      obs,
+      http,
+      broadcaster,
+      logger,
+      configPath: cfgPath,
+    });
 
     core.initialize();
+
+    // currentPageKey を存在しないキーに書き換える
     core.currentPageKey = "unknown";
+
+    // pushPageUpdate() 呼び出し前後で page.update が増えていないことを確認する
+    const before = sent.filter(m => m?.type === "page.update").length;
+
     core.pushPageUpdate?.();
-    const update = sent.find(m => m?.type === "page.update");
-    expect(update).toBeUndefined();
+
+    const after = sent.filter(m => m?.type === "page.update").length;
+
+    expect(after).toBe(before);
   });
 
   it("OBS-PANEL-ControlCore-TC-033: ボタン定義の image を page.update.buttons[*].image に反映する", () => {

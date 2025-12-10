@@ -131,29 +131,63 @@ export function initDockUi(
 
   // ボタン定義を反映するヘルパー
   const applyPageUpdate = (msg: PageUpdateMessage) => {
-    const { currentPage: newPage, buttons } = msg.payload;
-    currentPage = newPage;
+    const payload = msg?.payload;
+    if (!payload || !Array.isArray(payload.buttons)) {
+      return;
+    }
 
-    // 一旦全セルを無効化＆ラベルクリア
+    const { currentPage: newPage, buttons } = payload;
+
+    // 現在ページ名を更新（未指定なら維持）
+    if (typeof newPage === "string" && newPage.length > 0) {
+      currentPage = newPage;
+    }
+
+    // 1) 全セルを初期化（ラベル / disabled / image）
     for (const row of cells) {
       for (const cell of row) {
-        cell.button.className = "btn disabled";
-        cell.button.textContent = "";
-        delete cell.button.dataset.image;
+        const btn = cell.button;
+        btn.textContent = "";
+        btn.className = "btn disabled";
+        // image 属性もリセット
+        delete (btn as HTMLButtonElement & { dataset: { image?: string } }).dataset.image;
       }
     }
 
-    // ボタン定義を適用
+    // 2) buttons 定義を反映
     for (const def of buttons) {
-      const { x, y, label } = def;
-      if (y < 0 || y >= rows || x < 0 || x >= cols) {
+      if (!def) continue;
+
+      const x = Number(def.x);
+      const y = Number(def.y);
+
+      // 座標チェック（範囲外は無視）
+      if (
+        !Number.isFinite(x) ||
+        !Number.isFinite(y) ||
+        y < 0 ||
+        y >= rows ||
+        x < 0 ||
+        x >= cols
+      ) {
         continue;
       }
+
       const cell = cells[y][x];
-      cell.button.className = "btn";
-      cell.button.textContent = label ?? "";
-      if (image) {
-        cell.button.dataset.image = image;
+      const btn = cell.button;
+
+      // 有効ボタンとして有効化
+      btn.className = "btn";
+
+      // ラベル反映（未指定なら空文字）
+      btn.textContent = def.label ?? "";
+
+      // image → data-image に反映
+      const htmlBtn = btn as HTMLButtonElement & { dataset: { image?: string } };
+      if (def.image && typeof def.image === "string") {
+        htmlBtn.dataset.image = def.image;
+      } else {
+        delete htmlBtn.dataset.image;
       }
     }
   };
