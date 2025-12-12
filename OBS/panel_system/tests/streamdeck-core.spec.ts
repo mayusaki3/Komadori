@@ -4,13 +4,24 @@ import { createStreamDeckCore } from "../src/streamdeck/core";
 describe("Stream Deck Core / OBS-PANEL-StreamDeck-TC-001〜006", () => {
   // 共通ヘルパー: 3x5 キー配置で Core を作る
   function createCore() {
-    const sendButtonClick = vi.fn();
+    const labels: string[] = new Array(15).fill("");
+    const images: (string | undefined)[] = new Array(15).fill(undefined);
+
+    const updateKey: UpdateKeyFn = (index, title, image) => {
+      labels[index] = title;
+      images[index] = image;
+    };
+
+    const sendToCore = vi.fn();
+
     const core = createStreamDeckCore({
       rows: 3,
       cols: 5,
-      sendButtonClick,
+      updateKey,     // または onUpdateKey
+      sendToCore,
     });
-    return { core, sendButtonClick };
+
+    return { core, labels, images, sendToCore };
   }
 
   it("OBS-PANEL-StreamDeck-TC-001: page.update によるキー表示更新", () => {

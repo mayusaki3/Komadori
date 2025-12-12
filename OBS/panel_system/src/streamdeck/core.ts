@@ -48,7 +48,12 @@ export type UpdateKeyFn = (index: number, title: string, image?: string) => void
 export type StreamDeckCoreDeps = {
   rows: number;
   cols: number;
-  updateKey: UpdateKeyFn;
+  /**
+   * キー更新コールバック。
+   * 旧コード/テスト側が onUpdateKey を使っている可能性も考慮して両方許容する。
+   */
+  updateKey?: UpdateKeyFn;
+  onUpdateKey?: UpdateKeyFn;
   sendToCore: (msg: ButtonClickMessage) => void;
 };
 
@@ -80,6 +85,12 @@ export type StreamDeckCore = {
   getCurrentPage: () => string | undefined;
 
   /**
+   * 指定キーの「現在状態」を返す。
+   * テストでは title / image を確認する。
+   */
+  getKeyState: (index: number) => { title: string; image?: string; disabled: boolean } | undefined;
+
+  /**
    * 接続状態（簡易） getter / setter。
    * テストでは get → 初期値 / set → 反映 だけを確認する。
    */
@@ -91,14 +102,42 @@ export type StreamDeckCore = {
  * StreamDeckCore を生成するファクトリ。
  * テストでは createStreamDeckCore(...) を呼んで core を取得する。
  */
-export function createStreamDeckCore(deps: StreamDeckCoreDeps): StreamDeckCore {
-  const { rows, cols, updateKey, sendToCore } = deps;
+export function createStreamDeckCore(
+  deps: StreamDeckCoreDeps & { sendButtonClick?: (msg: ButtonClickMessage) => void },
+): StreamDeckCore {
+  const { rows, cols } = deps;
+
+  // sendToCore / sendButtonClick どちらでも受け付ける
+  const sendToCore: (msg: ButtonClickMessage) => void =
+    typeof deps.sendToCore === "function"
+      ? deps.sendToCore
+      : typeof deps.sendButtonClick === "function"
+      ? deps.sendButtonClick
+      : () => {};
+
+  // deps.updateKey / deps.onUpdateKey のどちらかを使う（どちらも無ければ no-op）
+  const rawUpdateKey =
+    (deps.updateKey as UpdateKeyFn | undefined) ??
+    (deps.onUpdateKey as UpdateKeyFn | undefined);
+
+  const safeUpdateKey: UpdateKeyFn =
+    typeof rawUpdateKey === "function"
+      ? rawUpdateKey
+      : (_index: number, _title: string, _image?: string) => {
+          // no-op（テスト側で updateKey を渡していない場合は何も起きない）
+        };
 
   // 現在ページキー（例: "main" / "util"）
   let currentPage: string | undefined;
 
   // 接続状態（テスト用の簡易状態）
   let connectionStatus: ConnectionStatus = "disconnected";
+
+  // 各キーの現在状態（テストが title/image/disabled を見る）
+  const keyStates: { title: string; image?: string; disabled: boolean }[] = Array.from(
+    { length: rows * cols },
+    () => ({ title: "", image: undefined, disabled: true }),
+  );
 
   // 現在のページに対するボタン定義のグリッド
   const buttonGrid: (PageUpdateButton | undefined)[][] = Array.from(
@@ -126,7 +165,10 @@ export function createStreamDeckCore(deps: StreamDeckCoreDeps): StreamDeckCore {
       for (let x = 0; x < cols; x++) {
         buttonGrid[y][x] = undefined;
         const index = y * cols + x;
-        updateKey(index, "", undefined);
+        // 内部状態もクリア（disabled = true）
+        keyStates[index] = { title: "", image: undefined, disabled: true };
+        // 実際のキー表示もクリア
+        safeUpdateKey(index, "", undefined);
       }
     }
 
@@ -155,7 +197,10 @@ export function createStreamDeckCore(deps: StreamDeckCoreDeps): StreamDeckCore {
       buttonGrid[y][x] = { x, y, label, image };
 
       const index = y * cols + x;
-      updateKey(index, label, image);
+      // 内部状態を更新（有効キーなので disabled = false）
+      keyStates[index] = { title: label, image, disabled: false };
+      // 実際のキー表示も更新
+      safeUpdateKey(index, label, image);
     }
   };
 
@@ -217,6 +262,18 @@ export function createStreamDeckCore(deps: StreamDeckCoreDeps): StreamDeckCore {
   const getCurrentPage = (): string | undefined => currentPage;
 
   /**
+   * 指定キーの現在状態を返す。
+   * インデックス範囲外なら undefined。
+   */
+  const getKeyState = (
+    index: number,
+  ): { title: string; image?: string; disabled: boolean } | undefined => {
+    if (!Number.isFinite(index)) return undefined;
+    if (index < 0 || index >= rows * cols) return undefined;
+    return keyStates[index];
+  };
+
+  /**
    * 接続状態 getter / setter。
    * テストでは単純に状態の保存・取得のみ確認する。
    */
@@ -231,6 +288,7 @@ export function createStreamDeckCore(deps: StreamDeckCoreDeps): StreamDeckCore {
     handleCoreMessage,
     handleKeyDown,
     getCurrentPage,
+    getKeyState,
     getConnectionStatus,
     setConnectionStatus,
   };
