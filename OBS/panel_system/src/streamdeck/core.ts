@@ -27,6 +27,7 @@ export type ButtonClickPayload = {
   page: string;
   x: number;
   y: number;
+  source?: string;
 };
 
 export type ButtonClickMessage = {
@@ -250,7 +251,7 @@ export function createStreamDeckCore(
 
     const msg: ButtonClickMessage = {
       type: "button.click",
-      payload: { page, x, y },
+      payload: { page, x, y, source: "streamdeck" },
     };
 
     sendToCore(msg);
