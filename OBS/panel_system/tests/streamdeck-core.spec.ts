@@ -21,7 +21,7 @@ describe("Stream Deck Core / OBS-PANEL-StreamDeck-TC-001〜006", () => {
       sendToCore,
     });
 
-    return { core, labels, images, sendToCore };
+    return { core, labels, images, sendToCore, sendButtonClick: sendToCore };
   }
 
   it("OBS-PANEL-StreamDeck-TC-001: page.update によるキー表示更新", () => {
