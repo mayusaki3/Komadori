@@ -92,8 +92,22 @@ Control Core に対する **OBS-PANEL-ControlCore-TC-Impl_001〜** は
 - **カバレッジ目的のテスト弱体化は禁止**
 
 ### 3.2 Dock UI / Stream Deck
-- UI 依存のため絶対 100% は要求しない  
-- DOM を伴わないロジック部分は可能な限りカバーする
+
+#### 3.2.1 Dock UI（例外扱い）
+- ブラウザ / DOM 依存のため、行（Stmt）/分岐（Branch）100% を必須とはしない
+- ただし外部仕様テスト（OBS-PANEL-Dock-TC-xxx 系）は固定・維持する
+- 重要な分岐やガードを中心に、合理的な範囲でカバーする
+
+#### 3.2.2 Stream Deck（層分離）
+Stream Deck は「コアロジック」と「外部 I/F」を分離して扱う。
+
+- Stream Deck Core（コアロジック）
+  - page.update → 状態反映、キー押下 → button.click 生成などの純ロジック領域
+  - 原則として行（Stmt）/分岐（Branch）100% 必須（保証対象）
+
+- Stream Deck 外部 I/F（SDK / WebSocket / ホストアプリ依存）
+  - 実行環境依存のため、行（Stmt）/分岐（Branch）100% を必須とはしない
+  - UT はモック中心とし、必要に応じてスモーク / E2E テストで補完する
 
 ---
 
@@ -111,6 +125,9 @@ Control Core に対する **OBS-PANEL-ControlCore-TC-Impl_001〜** は
 - クリックイベント → button.click の送信内容確認
 
 ### 4.3 Stream Deck
+- Stream Deck は Core（コアロジック）と外部 I/F（SDK / WebSocket）を分離してテストする
+  - Core は純ロジックとしてカバレッジ100%を目標（保証対象）
+  - 外部 I/F は SDK モック中心とし、カバレッジ100%は必須としない
 - SDK モックによる setTitle / setImage 呼び出し確認  
 - button.click の送出内容  
 - 接続状態のハンドリング
