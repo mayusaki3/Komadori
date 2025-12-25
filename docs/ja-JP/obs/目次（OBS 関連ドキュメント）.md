@@ -22,10 +22,10 @@
 - OBS WebSocket / 外部 HTTP API 呼び出し
 
 詳細:
-- [パネルシステム概要](panel_system/00_overview.md)
-- [パネルシステム機能仕様](panel_system/01_spec.md)
-- [panel.json 仕様](panel_system/02_json_format.md)
-- [実装コンポーネント仕様（要約）](panel_system/03_components.md)
+- [パネルシステム概要](panel_system/00_パネルシステム概要.md)
+- [パネルシステム機能仕様](panel_system/01_パネルシステム機能仕様.md)
+- [panel.json 仕様](panel_system/02_panel_json仕様.md)
+- [実装コンポーネント仕様（要約）](panel_system/03_実装コンポーネント仕様.md)
 
 ### 2.2 テスト関連
 

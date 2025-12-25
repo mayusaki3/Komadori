@@ -377,4 +377,147 @@ describe("Stream Deck Core / OBS-PANEL-StreamDeck-TC-001〜006", () => {
     expect(s00.disabled).toBe(true);
   });
 
+  it("OBS-PANEL-StreamDeck-TC-021: handleKeyDown は Infinity / -Infinity を無視する", () => {
+    const { core, sendToCore } = createCore();
+
+    core.handleKeyDown(Infinity as any);
+    core.handleKeyDown(-Infinity as any);
+
+    expect(sendToCore).toHaveBeenCalledTimes(0);
+  });
+
+  it("OBS-PANEL-StreamDeck-TC-022: getKeyState は Infinity / -Infinity で undefined", () => {
+    const { core } = createCore();
+
+    expect(core.getKeyState(Infinity as any)).toBeUndefined();
+    expect(core.getKeyState(-Infinity as any)).toBeUndefined();
+  });
+
+  it("OBS-PANEL-StreamDeck-TC-023: updateKey/onUpdateKey が無い場合でも page.update で no-op safeUpdateKey が呼ばれて落ちない", () => {
+    const core = createStreamDeckCore({
+      rows: 3,
+      cols: 5,
+      // updateKey / onUpdateKey を渡さない（safeUpdateKey の no-op 分岐を確実に作る）
+      sendToCore: vi.fn(),
+    } as any);
+
+    core.applyPageUpdate({
+      type: "page.update",
+      payload: {
+        currentPage: "main",
+        buttons: [{ x: 0, y: 0, label: "X" }],
+      },
+    });
+
+    // 表示コールバックは no-op でも、内部状態は更新されているはず
+    const s00 = core.getKeyState(0) as any;
+    expect(s00.title).toBe("X");
+    expect(s00.disabled).toBe(false);
+  });
+
+  it("OBS-PANEL-StreamDeck-TC-024: sendToCore/sendButtonClick が両方無効でも、ボタン定義キー押下で no-op sendToCore が呼ばれて落ちない", () => {
+    // updateKey は渡しておく（このテストでは sendToCore 側の no-op 分岐だけを狙う）
+    const updateKey = vi.fn();
+
+    const core = createStreamDeckCore({
+      rows: 3,
+      cols: 5,
+      updateKey,
+      // sendToCore を関数にしない（フォールバック分岐を確実に作る）
+      sendToCore: 123 as any,
+      // sendButtonClick も関数にしない（最終 no-op 分岐へ）
+      sendButtonClick: "x" as any,
+    } as any);
+
+    // 重要：handleKeyDown が早期 return しないよう、押すキーにボタンを定義する
+    // (x=0,y=0) → index 0
+    core.applyPageUpdate({
+      type: "page.update",
+      payload: {
+        currentPage: "main",
+        buttons: [{ x: 0, y: 0, label: "X" }],
+      },
+    });
+
+    // ここで no-op sendToCore が“実際に呼ばれる”経路に入る
+    expect(() => core.handleKeyDown(0)).not.toThrow();
+  });
+
+  it("OBS-PANEL-StreamDeck-TC-025: handleCoreMessage(page.update) で payload が適用される", () => {
+    const { core } = createCore();
+
+    core.handleCoreMessage({
+      type: "page.update",
+      payload: {
+        currentPage: "main",
+        buttons: [{ x: 0, y: 0, label: "OK" }],
+      },
+    });
+
+    const s00 = core.getKeyState(0) as any;
+    expect(s00.title).toBe("OK");
+    expect(s00.disabled).toBe(false);
+  });
+
+  it("OBS-PANEL-StreamDeck-TC-026: ボタン未定義キー押下では sendToCore しない", () => {
+    const { core, sendToCore } = createCore();
+
+    core.applyPageUpdate({
+      type: "page.update",
+      payload: {
+        currentPage: "main",
+        buttons: [{ x: 0, y: 0, label: "ONLY" }], // index 0 のみ有効
+      },
+    });
+
+    core.handleKeyDown(1); // (1,0) は未定義
+    expect(sendToCore).toHaveBeenCalledTimes(0);
+  });
+
+  it("OBS-PANEL-StreamDeck-TC-027: label 未指定でも title は空文字に正規化され disabled=false", () => {
+    const { core } = createCore();
+
+    core.applyPageUpdate({
+      type: "page.update",
+      payload: {
+        currentPage: "main",
+        buttons: [
+          { x: 0, y: 0 }, // label 省略 → (def.label ?? "") の '' 側を確実に踏む
+        ],
+      },
+    } as any);
+
+    const s00 = core.getKeyState(0) as any;
+    expect(s00.title).toBe("");
+    expect(s00.disabled).toBe(false);
+  });
+
+  it("OBS-PANEL-StreamDeck-TC-028: currentPage 未設定状態のキー押下は page='main' になる", () => {
+    // currentPage が更新されない状態（空文字）を作り、(currentPage ?? 'main') の 'main' 側を踏む
+    const sendButtonClick = vi.fn();
+
+    const core = createStreamDeckCore({
+      rows: 3,
+      cols: 5,
+      updateKey: vi.fn(),
+      sendToCore: null as any,
+      sendButtonClick,
+    } as any);
+
+    core.applyPageUpdate({
+      type: "page.update",
+      payload: {
+        currentPage: "", // 空文字 → core 側の条件で currentPage を更新しない
+        buttons: [{ x: 0, y: 0, label: "X" }],
+      },
+    } as any);
+
+    core.handleKeyDown(0);
+
+    expect(sendButtonClick).toHaveBeenCalledTimes(1);
+    const msg = sendButtonClick.mock.calls[0][0] as any;
+    expect(msg.payload.page).toBe("main");
+    expect(msg.payload).toMatchObject({ x: 0, y: 0, source: "streamdeck" });
+  });
+
 });
