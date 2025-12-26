@@ -323,25 +323,32 @@ describe("Dock UI (OBS-PANEL-Dock-TC-001〜005 / TC-Impl_xxx)", () => {
   });
 
   // 追加テスト案（panel.ts の未カバー行: 65,75-76,81-82,89-90,136-137,173-174,262 を狙う）
-// 既存の tests/dock-ui.spec.ts の describe(...) 内の末尾に、そのまま追記してください。
+  // 既存の tests/dock-ui.spec.ts の describe(...) 内の末尾に、そのまま追記してください。
 
   it("OBS-PANEL-Dock-TC-Impl_005: initDockUi は wsUrl 文字列引数でも初期化できる", () => {
-    // 既存 beforeEach のハンドルを破棄してから作り直す
-    dispose?.();
-
-    FakeWebSocket.reset();
+    // DOM を用意（initDockUi が #status / #grid を参照するため）
     document.body.innerHTML = `
       <div id="status"></div>
       <div id="grid"></div>
     `;
 
-    const handle = initDockUi("ws://example.com/dock-str", document, FakeWebSocket as any);
-    expect(FakeWebSocket.instances.length).toBe(1);
-    expect(FakeWebSocket.instances[0].url).toBe("ws://example.com/dock-str");
+    // FakeWebSocket を使うため、グローバル WebSocket を差し替える
+    FakeWebSocket.reset();
+    const prevWs = (globalThis as any).WebSocket;
+    (globalThis as any).WebSocket = FakeWebSocket as any;
 
-    expect(() => handle.dispose()).not.toThrow();
-    // 次のテストの afterEach が dispose を呼べるように差し替え
-    dispose = handle.dispose;
+    try {
+      const handle = initDockUi("ws://example.com/dock-str");
+
+      expect(FakeWebSocket.instances.length).toBe(1);
+      expect(FakeWebSocket.instances[0].url).toBe("ws://example.com/dock-str");
+
+      // 後始末
+      handle.dispose();
+    } finally {
+      // グローバルを必ず復元
+      (globalThis as any).WebSocket = prevWs;
+    }
   });
 
   it("OBS-PANEL-Dock-TC-Impl_006: Document が無い場合は initDockUi が例外を投げる", () => {
@@ -517,6 +524,86 @@ describe("Dock UI (OBS-PANEL-Dock-TC-001〜005 / TC-Impl_xxx)", () => {
 
     // 二重 dispose になっても落ちないことを軽く確認（安全側）
     expect(() => dispose()).not.toThrow();
+  });
+
+  it("OBS-PANEL-Dock-TC-Impl_012: page.update.buttons に falsy が混ざっても無視して反映できる", () => {
+    const ws = getSocket();
+
+    ws.receive(
+      JSON.stringify({
+        type: "page.update",
+        payload: {
+          currentPage: "main",
+          buttons: [
+            null,
+            { x: 0, y: 0, label: "OK" },
+          ],
+        },
+      }),
+    );
+
+    const btn00 = document.querySelector(
+      'button[data-x="0"][data-y="0"]',
+    ) as HTMLButtonElement;
+
+    expect(btn00.textContent).toBe("OK");
+    expect(btn00.classList.contains("disabled")).toBe(false);
+  });
+
+  it("OBS-PANEL-Dock-TC-Impl_013: label 未指定のボタンは空文字として表示され enabled になる", () => {
+    const ws = getSocket();
+
+    ws.receive(
+      JSON.stringify({
+        type: "page.update",
+        payload: {
+          currentPage: "main",
+          buttons: [
+            { x: 0, y: 0 }, // label なし → "" 経路
+          ],
+        },
+      }),
+    );
+
+    const btn00 = document.querySelector(
+      'button[data-x="0"][data-y="0"]',
+    ) as HTMLButtonElement;
+
+    expect(btn00.textContent).toBe("");
+    expect(btn00.classList.contains("disabled")).toBe(false);
+  });
+
+  it("OBS-PANEL-Dock-TC-Impl_014: click handler は target=null を安全に無視する", () => {
+    // 既存 beforeEach の initDockUi を一旦破棄して、listener を捕まえる用に作り直す
+    dispose();
+
+    FakeWebSocket.reset();
+    document.body.innerHTML = `
+      <div id="status"></div>
+      <div id="grid"></div>
+    `;
+
+    const grid = document.getElementById("grid") as any;
+
+    // addEventListener を spy して click handler を取得する
+    const spy = vi.spyOn(grid, "addEventListener");
+
+    const handle = initDockUi({
+      wsUrl: "ws://example.com/dock",
+      document,
+      WebSocketImpl: FakeWebSocket as any,
+      rows: 3,
+      cols: 5,
+    });
+
+    const clickCall = spy.mock.calls.find((c) => c?.[0] === "click");
+    expect(clickCall).toBeTruthy();
+
+    const clickHandler = clickCall![1] as (ev: any) => void;
+
+    expect(() => clickHandler({ target: null })).not.toThrow();
+
+    handle.dispose();
   });
 
 });
